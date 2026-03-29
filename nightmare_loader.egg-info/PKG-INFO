@@ -1,3 +1,17 @@
+Metadata-Version: 2.4
+Name: nightmare-loader
+Version: 0.1.0
+Summary: Multi-ISO bootable USB creator supporting UEFI and legacy BIOS
+License-Expression: MIT
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: click>=8.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0; extra == "dev"
+Requires-Dist: pytest-cov; extra == "dev"
+Dynamic: license-file
+
 # Nightmare Loader
 
 **Multi-ISO bootable USB creator – supports UEFI and legacy BIOS.**
