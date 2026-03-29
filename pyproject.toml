@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nightmare-loader"
+version = "0.1.0"
+description = "Multi-ISO bootable USB creator supporting UEFI and legacy BIOS"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+dependencies = [
+    "click>=8.0",
+]
+
+[project.scripts]
+nightmare-loader = "nightmare_loader.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["nightmare_loader*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
