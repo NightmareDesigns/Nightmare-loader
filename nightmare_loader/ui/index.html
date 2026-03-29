@@ -557,6 +557,25 @@
       <div class="progress-wrap" id="prep-progress-wrap" style="display:none">
         <div class="progress-bar" id="prep-progress"></div>
       </div>
+
+      <hr class="divider" />
+
+      <div style="font-size:0.7rem;line-height:1.65;color:var(--muted)">
+        <div style="color:var(--label);letter-spacing:0.12em;font-size:0.67rem;margin-bottom:6px">
+          🖥 BOOT FROM USB – QUICK GUIDE
+        </div>
+        <ol style="padding-left:1.1em;display:flex;flex-direction:column;gap:4px">
+          <li>Insert the prepared USB drive and <strong style="color:var(--green-dim)">restart</strong> your computer.</li>
+          <li>Enter your <strong style="color:var(--green-dim)">BIOS / UEFI firmware</strong> (typically <kbd style="background:rgba(0,80,20,0.4);border:1px solid var(--green-dark);border-radius:2px;padding:0 4px">F2</kbd>, <kbd style="background:rgba(0,80,20,0.4);border:1px solid var(--green-dark);border-radius:2px;padding:0 4px">F12</kbd>, <kbd style="background:rgba(0,80,20,0.4);border:1px solid var(--green-dark);border-radius:2px;padding:0 4px">Del</kbd> or <kbd style="background:rgba(0,80,20,0.4);border:1px solid var(--green-dark);border-radius:2px;padding:0 4px">Esc</kbd> during POST).</li>
+          <li>Set the <strong style="color:var(--green-dim)">boot order</strong> so the USB drive is first, or choose it from the one-time <strong style="color:var(--green-dim)">boot menu</strong>.</li>
+          <li>Save and exit — the <strong style="color:var(--red)">Nightmare Loader</strong> GRUB menu will appear.</li>
+          <li>Select an ISO entry to boot it.</li>
+        </ol>
+        <p style="margin-top:8px;font-size:0.66rem">
+          <strong style="color:#ffaa44">UEFI Secure Boot:</strong> may need to be disabled if your ISOs are unsigned.
+          Look for "Secure Boot" in your UEFI security settings and set it to <em>Disabled</em>.
+        </p>
+      </div>
     </div>
 
     <!-- ┌─ ADD ISO ──────────────────────────────────────────┐ -->

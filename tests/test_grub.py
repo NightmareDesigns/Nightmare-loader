@@ -117,6 +117,19 @@ class TestGenerateGrubCfg:
         assert "Reboot" in cfg
         assert "Power Off" in cfg
 
+    def test_search_command_present_default_label(self):
+        cfg = generate_grub_cfg([])
+        assert "search --no-floppy --label --set=root NIGHTMARE" in cfg
+
+    def test_search_command_uses_custom_label(self):
+        cfg = generate_grub_cfg([], label="MYUSB")
+        assert "search --no-floppy --label --set=root MYUSB" in cfg
+
+    def test_gfxterm_wrapped_in_conditional(self):
+        cfg = generate_grub_cfg([])
+        assert "if loadfont" in cfg
+        assert "terminal_output gfxterm" in cfg
+
     def test_ubuntu_entry_present(self):
         cfg = generate_grub_cfg([self._ubuntu_entry()])
         assert "Ubuntu 22.04" in cfg
@@ -169,6 +182,16 @@ class TestWriteGrubCfg:
         write_grub_cfg(tmp_path, [entry])
         content = (tmp_path / GRUB_CFG).read_text()
         assert "Test ISO" in content
+
+    def test_custom_label_written_to_search_command(self, tmp_path):
+        write_grub_cfg(tmp_path, [], label="CUSTOM")
+        content = (tmp_path / GRUB_CFG).read_text()
+        assert "search --no-floppy --label --set=root CUSTOM" in content
+
+    def test_default_label_nightmare_in_search_command(self, tmp_path):
+        write_grub_cfg(tmp_path, [])
+        content = (tmp_path / GRUB_CFG).read_text()
+        assert "search --no-floppy --label --set=root NIGHTMARE" in content
 
 
 # ---------------------------------------------------------------------------
