@@ -47,6 +47,7 @@ from .grub import (
     ISO_DIR,
     install_grub_bios,
     install_grub_efi,
+    install_grub_theme,
     load_state,
     save_state,
     write_grub_cfg,
@@ -153,6 +154,8 @@ def prepare(device: str, layout: str, label: str, yes: bool) -> None:
             # Install GRUB for UEFI
             click.echo("Installing GRUB (UEFI)…")
             install_grub_efi(mp, removable=True)
+            # Install the Nightmare Loader themed pre-loader
+            install_grub_theme(mp)
             # Write initial (empty) grub.cfg – pass label so the search
             # command in the header matches the FAT volume label.
             write_grub_cfg(mp, [], label=label)
@@ -175,6 +178,8 @@ def prepare(device: str, layout: str, label: str, yes: bool) -> None:
                         unmount(esp_mp)
                     except Exception:
                         pass
+            # Install the Nightmare Loader themed pre-loader
+            install_grub_theme(mp)
             write_grub_cfg(mp, [], label=label)
             save_state(mp, {"entries": [], "label": label})
 

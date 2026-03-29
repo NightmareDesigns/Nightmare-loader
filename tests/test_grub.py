@@ -11,9 +11,11 @@ import pytest
 
 from nightmare_loader.grub import (
     GRUB_CFG,
+    GRUB_THEME_DIR,
     ISO_DIR,
     STATE_FILE,
     generate_grub_cfg,
+    install_grub_theme,
     load_state,
     save_state,
     write_grub_cfg,
@@ -218,3 +220,33 @@ class TestState:
     def test_state_saved_in_root(self, tmp_path):
         save_state(tmp_path, {"entries": []})
         assert (tmp_path / STATE_FILE).exists()
+
+
+# ---------------------------------------------------------------------------
+# install_grub_theme
+# ---------------------------------------------------------------------------
+
+class TestInstallGrubTheme:
+    def test_creates_theme_directory(self, tmp_path):
+        install_grub_theme(tmp_path)
+        assert (tmp_path / GRUB_THEME_DIR).is_dir()
+
+    def test_writes_theme_txt(self, tmp_path):
+        dest = install_grub_theme(tmp_path)
+        assert dest.name == "theme.txt"
+        assert dest.exists()
+
+    def test_theme_contains_nightmare_title(self, tmp_path):
+        dest = install_grub_theme(tmp_path)
+        content = dest.read_text()
+        assert "NIGHTMARE LOADER" in content
+
+    def test_theme_has_green_menu_color(self, tmp_path):
+        dest = install_grub_theme(tmp_path)
+        content = dest.read_text()
+        # Green item color for matrix aesthetic
+        assert "item_color" in content
+
+    def test_grub_cfg_references_theme(self, tmp_path):
+        cfg = generate_grub_cfg([])
+        assert "themes/nightmare/theme.txt" in cfg
