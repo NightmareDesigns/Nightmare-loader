@@ -52,6 +52,7 @@ from .grub import (
     write_grub_cfg,
 )
 from .iso import ISOError, get_iso_metadata
+from .server import DEFAULT_PORT, start_server
 
 
 # ---------------------------------------------------------------------------
@@ -382,6 +383,25 @@ def iso_info(iso_path: str) -> None:
     click.echo(f"Kernel  : {meta['kernel']}")
     click.echo(f"Initrd  : {meta['initrd']}")
     click.echo(f"Cmdline : {meta['cmdline']}")
+
+
+# ---------------------------------------------------------------------------
+# nightmare-loader ui
+# ---------------------------------------------------------------------------
+
+@cli.command("ui")
+@click.option("--port", "-p", default=DEFAULT_PORT, show_default=True,
+              help="TCP port for the web UI server.")
+@click.option("--no-browser", is_flag=True, default=False,
+              help="Do not open the browser automatically.")
+def web_ui(port: int, no_browser: bool) -> None:
+    """
+    Launch the Nightmare Loader web UI.
+
+    Opens a local web server and (by default) a browser window showing
+    the full graphical interface for managing drives and ISOs.
+    """
+    start_server(port=port, open_browser=not no_browser)
 
 
 # ---------------------------------------------------------------------------
