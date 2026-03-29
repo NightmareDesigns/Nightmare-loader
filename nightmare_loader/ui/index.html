@@ -1,0 +1,1224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Nightmare Loader</title>
+  <style>
+    /* ── Reset & base ──────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --red:       #cc0000;
+      --red-dark:  #8b0000;
+      --red-deep:  #4a0000;
+      --green:     #00ff41;
+      --green-dim: #00cc33;
+      --green-dark:#003a10;
+      --bg:        #000;
+      --panel-bg:  rgba(0,0,0,0.82);
+      --border:    rgba(139,0,0,0.65);
+      --text:      #b0ffb8;
+      --label:     #55ff77;
+      --muted:     #3a5c41;
+      --radius:    3px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Courier New', Courier, monospace;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── Matrix canvas ─────────────────────────────────────────────── */
+    #matrix-canvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    /* ── App wrapper ───────────────────────────────────────────────── */
+    #app {
+      position: relative;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 0 16px 48px;
+    }
+
+    /* ── Header / blood title ──────────────────────────────────────── */
+    header {
+      text-align: center;
+      padding: 44px 0 52px;
+      width: 100%;
+    }
+
+    #title-wrap {
+      position: relative;
+      display: inline-block;
+      line-height: 1;
+    }
+
+    #title {
+      font-family: 'Impact', 'Arial Black', Arial, sans-serif;
+      font-size: clamp(2.6rem, 9vw, 6.5rem);
+      font-weight: 900;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--red);
+      text-shadow:
+        0 0 8px  #ff0000,
+        0 0 20px #ff000088,
+        0 0 40px #cc000044,
+        2px 3px 6px #000;
+      user-select: none;
+      position: relative;
+      z-index: 2;
+    }
+
+    /* Blood drip elements are injected by JS below #title-wrap */
+    .b-drip {
+      position: absolute;
+      top: 100%;          /* hangs below title */
+      width: 5px;
+      border-radius: 0 0 50% 50%;
+      background: linear-gradient(to bottom, var(--red-deep) 0%, var(--red-dark) 40%, var(--red) 80%, #ff4400 100%);
+      transform-origin: top center;
+      pointer-events: none;
+      z-index: 1;
+    }
+    .b-drop {
+      position: absolute;
+      border-radius: 50% 50% 60% 60% / 45% 45% 55% 55%;
+      background: radial-gradient(ellipse at 35% 30%, #ff4422, var(--red-dark));
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    #subtitle {
+      margin-top: 10px;
+      font-size: 0.78rem;
+      letter-spacing: 0.35em;
+      text-transform: uppercase;
+      color: var(--green-dim);
+      opacity: 0.8;
+    }
+
+    /* ── Layout grid ───────────────────────────────────────────────── */
+    #grid {
+      width: 100%;
+      max-width: 1280px;
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 14px;
+    }
+
+    /* column spans */
+    .col-4  { grid-column: span 4; }
+    .col-5  { grid-column: span 5; }
+    .col-6  { grid-column: span 6; }
+    .col-7  { grid-column: span 7; }
+    .col-8  { grid-column: span 8; }
+    .col-12 { grid-column: span 12; }
+
+    @media (max-width: 900px) {
+      .col-4, .col-5, .col-6, .col-7, .col-8 { grid-column: span 12; }
+    }
+    @media (min-width: 901px) and (max-width: 1100px) {
+      .col-4 { grid-column: span 6; }
+      .col-5, .col-7 { grid-column: span 6; }
+      .col-8 { grid-column: span 12; }
+    }
+
+    /* ── Panel ─────────────────────────────────────────────────────── */
+    .panel {
+      background: var(--panel-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 20px 20px;
+      backdrop-filter: blur(6px);
+      box-shadow:
+        0 0 18px rgba(139,0,0,0.25),
+        inset 0 0 30px rgba(0,0,0,0.5);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .panel-title {
+      font-size: 0.72rem;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--red);
+      border-bottom: 1px solid rgba(139,0,0,0.35);
+      padding-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .panel-title .icon { font-size: 1rem; }
+
+    /* ── Form elements ─────────────────────────────────────────────── */
+    label {
+      display: block;
+      font-size: 0.7rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--label);
+      margin-bottom: 4px;
+    }
+
+    input[type="text"],
+    input[type="number"],
+    select {
+      width: 100%;
+      background: rgba(0,20,5,0.85);
+      border: 1px solid rgba(0,200,50,0.3);
+      border-radius: var(--radius);
+      color: var(--green);
+      font-family: inherit;
+      font-size: 0.82rem;
+      padding: 7px 10px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input[type="text"]:focus,
+    input[type="number"]:focus,
+    select:focus { border-color: var(--green-dim); }
+
+    select option { background: #001a05; color: var(--green); }
+
+    .field { display: flex; flex-direction: column; gap: 4px; }
+    .row   { display: flex; gap: 10px; }
+    .row > .field { flex: 1; }
+
+    /* toggle / radio group */
+    .toggle-group {
+      display: flex;
+      border: 1px solid rgba(0,200,50,0.3);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .toggle-group input { display: none; }
+    .toggle-group label {
+      flex: 1;
+      text-align: center;
+      padding: 7px 4px;
+      cursor: pointer;
+      color: var(--muted);
+      background: rgba(0,20,5,0.85);
+      transition: background 0.15s, color 0.15s;
+      border: none;
+      margin: 0;
+      font-size: 0.72rem;
+      letter-spacing: 0.15em;
+    }
+    .toggle-group input:checked + label {
+      background: rgba(0,80,20,0.5);
+      color: var(--green);
+    }
+
+    /* ── Buttons ───────────────────────────────────────────────────── */
+    .btn {
+      font-family: inherit;
+      font-size: 0.75rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      padding: 8px 16px;
+      border-radius: var(--radius);
+      border: 1px solid;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+      white-space: nowrap;
+    }
+    .btn-red {
+      background: rgba(100,0,0,0.6);
+      border-color: var(--red);
+      color: #ffaaaa;
+    }
+    .btn-red:hover {
+      background: rgba(160,0,0,0.75);
+      color: #fff;
+      box-shadow: 0 0 10px rgba(200,0,0,0.5);
+    }
+    .btn-green {
+      background: rgba(0,60,10,0.6);
+      border-color: var(--green-dim);
+      color: var(--green);
+    }
+    .btn-green:hover {
+      background: rgba(0,100,20,0.6);
+      color: #fff;
+      box-shadow: 0 0 10px rgba(0,200,50,0.4);
+    }
+    .btn-ghost {
+      background: transparent;
+      border-color: var(--muted);
+      color: var(--muted);
+    }
+    .btn-ghost:hover {
+      border-color: var(--green-dim);
+      color: var(--green);
+    }
+    .btn:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+    .btn-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    /* ── Lists ─────────────────────────────────────────────────────── */
+    .item-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      max-height: 260px;
+      overflow-y: auto;
+    }
+    .item-list::-webkit-scrollbar { width: 4px; }
+    .item-list::-webkit-scrollbar-track { background: transparent; }
+    .item-list::-webkit-scrollbar-thumb { background: var(--red-dark); border-radius: 2px; }
+
+    .item-card {
+      background: rgba(0,15,4,0.7);
+      border: 1px solid rgba(0,150,30,0.2);
+      border-radius: var(--radius);
+      padding: 9px 12px;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .item-card:hover, .item-card.selected {
+      border-color: rgba(0,200,50,0.5);
+      background: rgba(0,30,8,0.8);
+    }
+    .item-card.selected { border-color: var(--green-dim); }
+
+    .item-card .ic-name {
+      font-size: 0.82rem;
+      color: var(--green);
+      word-break: break-all;
+    }
+    .item-card .ic-meta {
+      font-size: 0.68rem;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+    .item-card .ic-badge {
+      margin-left: auto;
+      flex-shrink: 0;
+      font-size: 0.62rem;
+      letter-spacing: 0.1em;
+      padding: 2px 7px;
+      border-radius: 2px;
+      background: rgba(139,0,0,0.4);
+      border: 1px solid var(--red-dark);
+      color: #ff8888;
+      text-transform: uppercase;
+      align-self: flex-start;
+    }
+
+    .empty-msg {
+      font-size: 0.75rem;
+      color: var(--muted);
+      text-align: center;
+      padding: 16px 0;
+    }
+
+    /* ── Metadata table ────────────────────────────────────────────── */
+    .meta-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.78rem;
+    }
+    .meta-table tr + tr td { padding-top: 6px; }
+    .meta-table td:first-child {
+      color: var(--label);
+      white-space: nowrap;
+      padding-right: 14px;
+      font-size: 0.68rem;
+      letter-spacing: 0.1em;
+      vertical-align: top;
+    }
+    .meta-table td:last-child {
+      color: var(--green);
+      word-break: break-all;
+    }
+
+    /* ── Log ───────────────────────────────────────────────────────── */
+    #log-output {
+      background: rgba(0,8,2,0.9);
+      border: 1px solid rgba(0,150,30,0.2);
+      border-radius: var(--radius);
+      padding: 10px 12px;
+      height: 160px;
+      overflow-y: auto;
+      font-size: 0.73rem;
+      line-height: 1.6;
+    }
+    #log-output::-webkit-scrollbar { width: 4px; }
+    #log-output::-webkit-scrollbar-thumb { background: var(--green-dark); border-radius: 2px; }
+
+    .log-line        { color: var(--green-dim); }
+    .log-line.ok     { color: var(--green); }
+    .log-line.err    { color: #ff5555; }
+    .log-line.warn   { color: #ffaa00; }
+    .log-line.head   { color: var(--red); letter-spacing: 0.1em; }
+    .log-line.dim    { color: var(--muted); }
+
+    .log-prompt::before { content: '> '; color: var(--red); }
+
+    /* ── Progress bar ──────────────────────────────────────────────── */
+    .progress-wrap {
+      height: 6px;
+      background: rgba(0,40,10,0.6);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .progress-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--red-dark), var(--red), #ff4400);
+      border-radius: 3px;
+      transition: width 0.3s ease;
+      box-shadow: 0 0 8px var(--red);
+    }
+
+    /* ── Badge pill ────────────────────────────────────────────────── */
+    .pill {
+      display: inline-block;
+      font-size: 0.62rem;
+      letter-spacing: 0.08em;
+      padding: 1px 8px;
+      border-radius: 10px;
+      text-transform: uppercase;
+    }
+    .pill-green { background: rgba(0,80,20,0.5); border: 1px solid var(--green-dark); color: var(--green); }
+    .pill-red   { background: rgba(80,0,0,0.5);  border: 1px solid var(--red-dark);   color: #ff8888; }
+    .pill-gray  { background: rgba(20,20,20,0.5); border: 1px solid #333;              color: #666; }
+
+    /* ── Status bar ────────────────────────────────────────────────── */
+    #status-bar {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      z-index: 20;
+      background: rgba(0,0,0,0.9);
+      border-top: 1px solid rgba(139,0,0,0.4);
+      padding: 5px 20px;
+      font-size: 0.68rem;
+      letter-spacing: 0.12em;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+    }
+    #status-bar .sb-item { color: var(--muted); }
+    #status-bar .sb-item span { color: var(--green-dim); }
+    #sb-status { color: var(--green); margin-left: auto; }
+
+    /* ── Spinner ───────────────────────────────────────────────────── */
+    .spin {
+      display: inline-block;
+      width: 12px; height: 12px;
+      border: 2px solid var(--red-dark);
+      border-top-color: var(--red);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Divider ───────────────────────────────────────────────────── */
+    .divider {
+      height: 1px;
+      background: rgba(0,150,30,0.15);
+      border: none;
+    }
+
+    /* ── Confirm modal ─────────────────────────────────────────────── */
+    #modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.75);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+    #modal-overlay.active { display: flex; }
+    #modal-box {
+      background: #0a0a0a;
+      border: 1px solid var(--red);
+      border-radius: var(--radius);
+      padding: 28px 32px;
+      max-width: 420px;
+      width: 90%;
+      box-shadow: 0 0 40px rgba(200,0,0,0.4);
+    }
+    #modal-box h3 {
+      color: var(--red);
+      font-size: 0.9rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+    #modal-msg {
+      font-size: 0.8rem;
+      color: var(--text);
+      margin-bottom: 20px;
+      line-height: 1.6;
+    }
+    #modal-warn {
+      font-size: 0.72rem;
+      color: #ffaa44;
+      margin-bottom: 20px;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Matrix canvas -->
+<canvas id="matrix-canvas"></canvas>
+
+<div id="app">
+
+  <!-- ── HEADER ────────────────────────────────────────────────────── -->
+  <header>
+    <div id="title-wrap">
+      <h1 id="title">NIGHTMARE LOADER</h1>
+    </div>
+    <p id="subtitle">Multi-ISO Bootable USB Creator · UEFI + Legacy BIOS</p>
+  </header>
+
+  <!-- ── MAIN GRID ─────────────────────────────────────────────────── -->
+  <div id="grid">
+
+    <!-- ┌─ DRIVES ──────────────────────────────────────────┐ -->
+    <div class="panel col-4" id="panel-drives">
+      <div class="panel-title"><span class="icon">💀</span> Drives</div>
+
+      <div class="btn-row">
+        <button class="btn btn-green" onclick="refreshDrives()">⟳ Refresh</button>
+      </div>
+
+      <ul class="item-list" id="drive-list">
+        <li class="empty-msg">Loading drives…</li>
+      </ul>
+
+      <div id="drive-detail" style="display:none">
+        <table class="meta-table" id="drive-meta"></table>
+      </div>
+    </div>
+
+    <!-- ┌─ PREPARE DRIVE ────────────────────────────────────┐ -->
+    <div class="panel col-4" id="panel-prepare">
+      <div class="panel-title"><span class="icon">⚙️</span> Prepare Drive</div>
+
+      <div class="field">
+        <label>Target Device</label>
+        <input type="text" id="prep-device" placeholder="/dev/sdb" />
+      </div>
+
+      <div class="field">
+        <label>Volume Label <small style="color:var(--muted)">(max 11 chars)</small></label>
+        <input type="text" id="prep-label" value="NIGHTMARE" maxlength="11" />
+      </div>
+
+      <div class="field">
+        <label>Partition Layout</label>
+        <div class="toggle-group">
+          <input type="radio" name="layout" id="lay-hybrid" value="hybrid" checked />
+          <label for="lay-hybrid">Hybrid MBR</label>
+          <input type="radio" name="layout" id="lay-gpt" value="gpt" />
+          <label for="lay-gpt">GPT + ESP</label>
+        </div>
+      </div>
+
+      <p style="font-size:0.69rem;color:var(--muted);line-height:1.5">
+        <strong style="color:#ffaa44">⚠ WARNING:</strong> All data on the selected device will be erased.
+        GRUB2 will be installed for both UEFI and legacy BIOS.
+      </p>
+
+      <div class="btn-row">
+        <button class="btn btn-red" onclick="confirmPrepare()">💀 Prepare Drive</button>
+      </div>
+
+      <div class="progress-wrap" id="prep-progress-wrap" style="display:none">
+        <div class="progress-bar" id="prep-progress"></div>
+      </div>
+    </div>
+
+    <!-- ┌─ ADD ISO ──────────────────────────────────────────┐ -->
+    <div class="panel col-4" id="panel-add">
+      <div class="panel-title"><span class="icon">📀</span> Add ISO</div>
+
+      <div class="field">
+        <label>Target Device</label>
+        <input type="text" id="add-device" placeholder="/dev/sdb" />
+      </div>
+
+      <div class="field">
+        <label>ISO Path on Host</label>
+        <input type="text" id="add-iso-path" placeholder="/home/user/ubuntu.iso" />
+      </div>
+
+      <div class="field">
+        <label>Custom Menu Label <small style="color:var(--muted)">(optional)</small></label>
+        <input type="text" id="add-label" placeholder="Auto-detected" />
+      </div>
+
+      <div class="field">
+        <label>Mode</label>
+        <div class="toggle-group">
+          <input type="radio" name="copy-mode" id="copy-yes" value="copy" checked />
+          <label for="copy-yes">Copy to drive</label>
+          <input type="radio" name="copy-mode" id="copy-no" value="nocopy" />
+          <label for="copy-no">Register only</label>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-green" onclick="addISO()">+ Add ISO</button>
+        <button class="btn btn-ghost" onclick="inspectISOPath()">🔍 Inspect</button>
+      </div>
+    </div>
+
+    <!-- ┌─ ISO VAULT ────────────────────────────────────────┐ -->
+    <div class="panel col-7" id="panel-vault">
+      <div class="panel-title"><span class="icon">🗄️</span> ISO Vault</div>
+
+      <div class="row">
+        <div class="field" style="flex:2">
+          <label>Device</label>
+          <input type="text" id="vault-device" placeholder="/dev/sdb" />
+        </div>
+        <div class="field" style="flex:0;justify-content:flex-end;padding-top:20px">
+          <button class="btn btn-green" onclick="loadVault()">⟳ Load</button>
+        </div>
+      </div>
+
+      <ul class="item-list" id="vault-list">
+        <li class="empty-msg">Select a device and click Load.</li>
+      </ul>
+
+      <div class="btn-row" id="vault-actions" style="display:none">
+        <button class="btn btn-ghost" onclick="removeSelected()">🗑 Remove Selected</button>
+        <button class="btn btn-ghost" onclick="inspectSelected()">🔍 Inspect Selected</button>
+      </div>
+    </div>
+
+    <!-- ┌─ ISO INSPECTOR ────────────────────────────────────┐ -->
+    <div class="panel col-5" id="panel-inspect">
+      <div class="panel-title"><span class="icon">🔬</span> ISO Inspector</div>
+
+      <div class="field">
+        <label>ISO Path</label>
+        <input type="text" id="inspect-path" placeholder="/path/to/image.iso" />
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-green" onclick="inspectISO()">🔍 Inspect</button>
+        <button class="btn btn-ghost" onclick="clearInspect()">✕ Clear</button>
+      </div>
+
+      <hr class="divider" />
+
+      <div id="inspect-result">
+        <p class="empty-msg">Paste an ISO path above and click Inspect.</p>
+      </div>
+    </div>
+
+    <!-- ┌─ OPERATION LOG ────────────────────────────────────┐ -->
+    <div class="panel col-12" id="panel-log">
+      <div class="panel-title" style="justify-content:space-between">
+        <span><span class="icon">📟</span> Operation Log</span>
+        <button class="btn btn-ghost" style="padding:2px 10px;font-size:0.65rem" onclick="clearLog()">Clear</button>
+      </div>
+      <div id="log-output"></div>
+    </div>
+
+  </div><!-- /#grid -->
+</div><!-- /#app -->
+
+<!-- ── Status bar ──────────────────────────────────────────────────── -->
+<div id="status-bar">
+  <div class="sb-item">Version: <span id="sb-version">…</span></div>
+  <div class="sb-item">API: <span id="sb-api">checking…</span></div>
+  <div id="sb-status">READY</div>
+</div>
+
+<!-- ── Confirm modal ──────────────────────────────────────────────── -->
+<div id="modal-overlay">
+  <div id="modal-box">
+    <h3 id="modal-title">Confirm</h3>
+    <p id="modal-msg"></p>
+    <p id="modal-warn"></p>
+    <div class="btn-row">
+      <button class="btn btn-red"   id="modal-ok"     onclick="modalConfirm()">Confirm</button>
+      <button class="btn btn-ghost" id="modal-cancel" onclick="modalCancel()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════
+   MATRIX RAIN
+═══════════════════════════════════════════════════════════════════ */
+(function () {
+  const canvas = document.getElementById('matrix-canvas');
+  const ctx = canvas.getContext('2d');
+
+  // Katakana block + ASCII symbols + numbers
+  const CHARS =
+    'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン' +
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*<>?/\\|';
+
+  const FONT_SIZE = 14;
+  let cols, drops, speeds, bright;
+
+  function resize() {
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
+    cols   = Math.floor(canvas.width / FONT_SIZE);
+    drops  = Array.from({ length: cols }, () => Math.random() * -canvas.height / FONT_SIZE);
+    speeds = Array.from({ length: cols }, () => 0.4 + Math.random() * 1.2);
+    bright = Array.from({ length: cols }, () => Math.random() > 0.92);
+  }
+
+  resize();
+  window.addEventListener('resize', resize);
+
+  function draw() {
+    // Faint black overlay → trail effect
+    ctx.fillStyle = 'rgba(0,0,0,0.055)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.font = `${FONT_SIZE}px 'Courier New', monospace`;
+
+    for (let i = 0; i < cols; i++) {
+      const y = Math.floor(drops[i]) * FONT_SIZE;
+      const ch = CHARS[Math.floor(Math.random() * CHARS.length)];
+
+      if (bright[i]) {
+        // Leading character: white-green
+        ctx.fillStyle = '#ccffcc';
+        ctx.shadowColor = '#00ff41';
+        ctx.shadowBlur = 8;
+      } else {
+        // Column body: varying green shades
+        const intensity = 0.5 + 0.5 * Math.random();
+        ctx.fillStyle = `rgba(0,${Math.floor(180 + 75 * intensity)},${Math.floor(40 * intensity)},${intensity})`;
+        ctx.shadowBlur = 0;
+      }
+
+      ctx.fillText(ch, i * FONT_SIZE, y);
+      ctx.shadowBlur = 0;
+
+      drops[i] += speeds[i];
+
+      if (y > canvas.height && Math.random() > 0.975) {
+        drops[i]  = Math.random() * -20;
+        speeds[i] = 0.4 + Math.random() * 1.2;
+        bright[i] = Math.random() > 0.92;
+      }
+    }
+  }
+
+  setInterval(draw, 40);
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   BLOOD DRIP ANIMATION
+═══════════════════════════════════════════════════════════════════ */
+(function () {
+  const wrap = document.getElementById('title-wrap');
+  const titleEl = document.getElementById('title');
+  const POOL = [];  // active drip objects
+
+  function rnd(min, max) { return min + Math.random() * (max - min); }
+
+  function spawnDrip() {
+    const titleRect = titleEl.getBoundingClientRect();
+    const wrapRect  = wrap.getBoundingClientRect();
+
+    // Random x position across the title width
+    const x = rnd(0, titleRect.width) + (titleRect.left - wrapRect.left);
+    // Width varies 3-7 px
+    const w = rnd(3, 7);
+
+    const stalk = document.createElement('div');
+    stalk.className = 'b-drip';
+    stalk.style.cssText = `left:${x}px; width:${w}px; height:0px;`;
+    wrap.appendChild(stalk);
+
+    const maxLen   = rnd(18, 55);
+    const growRate = rnd(0.25, 0.7);  // px per frame
+
+    let len = 0;
+    let phase = 'grow';
+    let dropY = 0;
+    let dropEl = null;
+    let dropOpacity = 1;
+
+    function tick() {
+      if (phase === 'grow') {
+        len += growRate;
+        stalk.style.height = len + 'px';
+        if (len >= maxLen) {
+          phase = 'drop';
+          // create the falling blob
+          const dw = w * 2.2;
+          const dh = dw * 1.1;
+          dropEl = document.createElement('div');
+          dropEl.className = 'b-drop';
+          dropEl.style.cssText =
+            `left:${x - dw / 2 + w / 2}px; width:${dw}px; height:${dh}px; top:calc(100% + ${len}px);`;
+          wrap.appendChild(dropEl);
+        }
+      } else if (phase === 'drop') {
+        // Stalk retracts
+        len = Math.max(0, len - growRate * 0.8);
+        stalk.style.height = len + 'px';
+        // Drop falls
+        dropY += rnd(1.5, 3.5);
+        dropOpacity = Math.max(0, 1 - dropY / rnd(80, 140));
+        dropEl.style.top   = `calc(100% + ${parseFloat(stalk.style.height) + dropY}px)`;
+        dropEl.style.opacity = dropOpacity;
+        if (dropOpacity <= 0) {
+          stalk.remove();
+          dropEl.remove();
+          return; // end animation for this drip
+        }
+      }
+      requestAnimationFrame(tick);
+    }
+
+    requestAnimationFrame(tick);
+  }
+
+  // Continuously spawn drips at random intervals
+  function scheduleNext() {
+    spawnDrip();
+    setTimeout(scheduleNext, rnd(180, 800));
+  }
+
+  // Wait a moment for layout to stabilise, then start
+  setTimeout(scheduleNext, 600);
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   API HELPERS
+═══════════════════════════════════════════════════════════════════ */
+const API_BASE = '';  // same origin
+
+async function apiFetch(path, opts = {}) {
+  const res = await fetch(API_BASE + path, opts);
+  if (!res.ok) {
+    const txt = await res.text().catch(() => res.statusText);
+    throw new Error(`HTTP ${res.status}: ${txt}`);
+  }
+  return res.json();
+}
+
+async function apiGet(path) { return apiFetch(path); }
+
+async function apiPost(path, body) {
+  return apiFetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   OPERATION LOG
+═══════════════════════════════════════════════════════════════════ */
+const logEl = document.getElementById('log-output');
+
+function log(msg, cls = '') {
+  const line = document.createElement('div');
+  line.className = `log-line ${cls}`;
+  line.textContent = `[${new Date().toLocaleTimeString()}]  ${msg}`;
+  logEl.appendChild(line);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function clearLog() { logEl.innerHTML = ''; }
+
+function setStatus(msg, busy = false) {
+  const el = document.getElementById('sb-status');
+  el.innerHTML = busy ? `<span class="spin"></span> ${msg}` : msg;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   API HEALTH CHECK
+═══════════════════════════════════════════════════════════════════ */
+async function checkAPI() {
+  const apiEl = document.getElementById('sb-api');
+  const verEl = document.getElementById('sb-version');
+  try {
+    await apiGet('/api/drives');
+    apiEl.textContent = '● connected';
+    apiEl.style.color = 'var(--green)';
+    log('API connection established.', 'ok');
+    // Fetch version dynamically so the UI always reflects the installed package
+    try {
+      const vdata = await apiGet('/api/version');
+      verEl.textContent = vdata.version || '?';
+    } catch {
+      verEl.textContent = '?';
+    }
+  } catch {
+    apiEl.textContent = '● offline';
+    apiEl.style.color = '#ff5555';
+    verEl.textContent = '?';
+    log('API unreachable – run:  nightmare-loader ui', 'err');
+  }
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   DRIVES
+═══════════════════════════════════════════════════════════════════ */
+let selectedDrive = null;
+
+async function refreshDrives() {
+  const list = document.getElementById('drive-list');
+  list.innerHTML = '<li class="empty-msg"><span class="spin"></span> Scanning…</li>';
+  log('Scanning for removable drives…', 'dim');
+
+  try {
+    const data = await apiGet('/api/drives');
+    const drives = data.drives || [];
+
+    if (drives.length === 0) {
+      list.innerHTML = '<li class="empty-msg">No removable drives found.</li>';
+      log('No removable drives detected.', 'warn');
+      return;
+    }
+
+    list.innerHTML = '';
+    drives.forEach(d => {
+      const sizeGiB = d.size ? (parseInt(d.size) / 1073741824).toFixed(1) : '?';
+      const li = document.createElement('li');
+      li.className = 'item-card';
+      li.innerHTML = `
+        <div>
+          <div class="ic-name">${d.device}</div>
+          <div class="ic-meta">${d.model || 'Unknown'} · ${sizeGiB} GiB · ${d.transport || '?'}</div>
+        </div>
+        <span class="ic-badge">${d.transport || 'block'}</span>`;
+      li.addEventListener('click', () => selectDrive(d, li));
+      list.appendChild(li);
+    });
+
+    log(`Found ${drives.length} removable drive(s).`, 'ok');
+  } catch (e) {
+    list.innerHTML = '<li class="empty-msg">Error loading drives.</li>';
+    log('Drive scan failed: ' + e.message, 'err');
+  }
+}
+
+function selectDrive(drive, el) {
+  document.querySelectorAll('#drive-list .item-card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedDrive = drive;
+
+  // Populate device fields in other panels
+  document.getElementById('prep-device').value    = drive.device;
+  document.getElementById('add-device').value     = drive.device;
+  document.getElementById('vault-device').value   = drive.device;
+
+  // Show drive detail
+  const sizeGiB = drive.size ? (parseInt(drive.size) / 1073741824).toFixed(2) : '?';
+  const detail  = document.getElementById('drive-detail');
+  const meta    = document.getElementById('drive-meta');
+  detail.style.display = '';
+  meta.innerHTML = `
+    <tr><td>Device</td><td>${drive.device}</td></tr>
+    <tr><td>Model</td><td>${drive.model || '—'}</td></tr>
+    <tr><td>Size</td><td>${sizeGiB} GiB</td></tr>
+    <tr><td>Interface</td><td>${drive.transport || '—'}</td></tr>`;
+
+  log(`Selected drive: ${drive.device} (${drive.model || 'unknown'}, ${sizeGiB} GiB)`, 'ok');
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   MODAL
+═══════════════════════════════════════════════════════════════════ */
+let _modalCallback = null;
+
+function showModal(title, msg, warn, callback) {
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-msg').textContent   = msg;
+  document.getElementById('modal-warn').textContent  = warn || '';
+  document.getElementById('modal-overlay').classList.add('active');
+  _modalCallback = callback;
+}
+
+function modalConfirm() {
+  document.getElementById('modal-overlay').classList.remove('active');
+  if (_modalCallback) _modalCallback();
+  _modalCallback = null;
+}
+
+function modalCancel() {
+  document.getElementById('modal-overlay').classList.remove('active');
+  _modalCallback = null;
+  log('Action cancelled.', 'dim');
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   PREPARE DRIVE
+═══════════════════════════════════════════════════════════════════ */
+function confirmPrepare() {
+  const device = document.getElementById('prep-device').value.trim();
+  const label  = document.getElementById('prep-label').value.trim() || 'NIGHTMARE';
+  const layout = document.querySelector('input[name="layout"]:checked').value;
+
+  if (!device) { log('Prepare: no device specified.', 'err'); return; }
+
+  showModal(
+    '⚠ Confirm Prepare',
+    `About to erase ALL data on ${device} and install GRUB2 (${layout} layout, label: ${label}).`,
+    'This operation cannot be undone. Make sure this is the correct device.',
+    () => doPrepare(device, label, layout)
+  );
+}
+
+async function doPrepare(device, label, layout) {
+  const wrap = document.getElementById('prep-progress-wrap');
+  const bar  = document.getElementById('prep-progress');
+
+  wrap.style.display = '';
+  bar.style.width    = '5%';
+  setStatus('Preparing drive…', true);
+  log(`━━ PREPARE ${device} [${layout}] ━━`, 'head');
+  log(`Partitioning ${device}…`, 'dim');
+
+  try {
+    bar.style.width = '30%';
+    const res = await apiPost('/api/prepare', { device, label, layout });
+    bar.style.width = '70%';
+    log('Formatting partition(s)…', 'dim');
+    await new Promise(r => setTimeout(r, 300));
+    bar.style.width = '90%';
+    log('Installing GRUB (BIOS + UEFI)…', 'dim');
+    await new Promise(r => setTimeout(r, 300));
+    bar.style.width = '100%';
+    log(res.message || `Drive ${device} prepared successfully.`, 'ok');
+    setStatus('READY');
+  } catch (e) {
+    bar.style.width = '100%';
+    bar.style.background = '#cc0000';
+    log('Prepare failed: ' + e.message, 'err');
+    setStatus('ERROR');
+  }
+
+  setTimeout(() => {
+    wrap.style.display = 'none';
+    bar.style.width    = '0%';
+    bar.style.background = '';
+  }, 2000);
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   ADD ISO
+═══════════════════════════════════════════════════════════════════ */
+async function addISO() {
+  const device  = document.getElementById('add-device').value.trim();
+  const path    = document.getElementById('add-iso-path').value.trim();
+  const label   = document.getElementById('add-label').value.trim() || null;
+  const doCopy  = document.querySelector('input[name="copy-mode"]:checked').value === 'copy';
+
+  if (!device) { log('Add ISO: no device specified.', 'err'); return; }
+  if (!path)   { log('Add ISO: no ISO path specified.', 'err'); return; }
+
+  setStatus('Adding ISO…', true);
+  log(`━━ ADD ISO ${path.split('/').pop()} → ${device} ━━`, 'head');
+
+  try {
+    const res = await apiPost('/api/add', { device, iso_path: path, label, copy: doCopy });
+    log(res.message || 'ISO added successfully.', 'ok');
+    setStatus('READY');
+    // Refresh vault if same device
+    if (document.getElementById('vault-device').value === device) loadVault();
+  } catch (e) {
+    log('Add ISO failed: ' + e.message, 'err');
+    setStatus('ERROR');
+  }
+}
+
+function inspectISOPath() {
+  const path = document.getElementById('add-iso-path').value.trim();
+  if (!path) { log('Inspect: no path provided.', 'err'); return; }
+  document.getElementById('inspect-path').value = path;
+  inspectISO();
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   ISO VAULT
+═══════════════════════════════════════════════════════════════════ */
+let selectedISO = null;
+
+async function loadVault() {
+  const device = document.getElementById('vault-device').value.trim();
+  if (!device) { log('Vault: no device specified.', 'err'); return; }
+
+  const list = document.getElementById('vault-list');
+  list.innerHTML = '<li class="empty-msg"><span class="spin"></span> Loading…</li>';
+  document.getElementById('vault-actions').style.display = 'none';
+  selectedISO = null;
+
+  log(`Loading ISO list from ${device}…`, 'dim');
+
+  try {
+    const data = await apiGet(`/api/isos/${encodeURIComponent(device)}`);
+    const entries = data.entries || [];
+
+    if (entries.length === 0) {
+      list.innerHTML = '<li class="empty-msg">No ISOs registered on this device.</li>';
+      log(`No ISOs found on ${device}.`, 'warn');
+      return;
+    }
+
+    list.innerHTML = '';
+    entries.forEach(e => {
+      const mb = e.size_bytes ? (e.size_bytes / 1048576).toFixed(0) : '?';
+      const li = document.createElement('li');
+      li.className = 'item-card';
+      li.dataset.filename = e.filename;
+      li.dataset.entry    = JSON.stringify(e);
+      li.innerHTML = `
+        <div>
+          <div class="ic-name">${e.label || e.filename}</div>
+          <div class="ic-meta">${e.filename} · ${mb} MB · ${e.distro_label || e.distro || '?'}</div>
+        </div>
+        <span class="ic-badge">${e.distro || 'unknown'}</span>`;
+      li.addEventListener('click', () => selectISO(e, li));
+      list.appendChild(li);
+    });
+
+    document.getElementById('vault-actions').style.display = '';
+    log(`Loaded ${entries.length} ISO(s) from ${device}.`, 'ok');
+  } catch (e) {
+    list.innerHTML = '<li class="empty-msg">Error loading ISO list.</li>';
+    log('Vault load failed: ' + e.message, 'err');
+  }
+}
+
+function selectISO(entry, el) {
+  document.querySelectorAll('#vault-list .item-card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedISO = entry;
+  log(`Selected ISO: ${entry.filename}`, 'dim');
+}
+
+function removeSelected() {
+  if (!selectedISO) { log('No ISO selected.', 'err'); return; }
+  const device = document.getElementById('vault-device').value.trim();
+  showModal(
+    '🗑 Remove ISO',
+    `Remove "${selectedISO.filename}" from ${device}?`,
+    'The ISO file will be deleted from the drive and its boot entry removed.',
+    () => doRemove(device, selectedISO.filename)
+  );
+}
+
+async function doRemove(device, isoName) {
+  setStatus('Removing ISO…', true);
+  log(`━━ REMOVE ${isoName} from ${device} ━━`, 'head');
+  try {
+    const res = await apiPost('/api/remove', { device, iso_name: isoName });
+    log(res.message || 'ISO removed.', 'ok');
+    setStatus('READY');
+    loadVault();
+  } catch (e) {
+    log('Remove failed: ' + e.message, 'err');
+    setStatus('ERROR');
+  }
+}
+
+function inspectSelected() {
+  if (!selectedISO) { log('No ISO selected.', 'err'); return; }
+  // Populate inspector from cached metadata
+  renderInspectResult(selectedISO);
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   ISO INSPECTOR
+═══════════════════════════════════════════════════════════════════ */
+function clearInspect() {
+  document.getElementById('inspect-path').value = '';
+  document.getElementById('inspect-result').innerHTML =
+    '<p class="empty-msg">Paste an ISO path above and click Inspect.</p>';
+}
+
+async function inspectISO() {
+  const path = document.getElementById('inspect-path').value.trim();
+  if (!path) { log('Inspector: no path provided.', 'err'); return; }
+
+  document.getElementById('inspect-result').innerHTML =
+    '<p class="empty-msg"><span class="spin"></span> Inspecting…</p>';
+  log(`Inspecting ISO: ${path}…`, 'dim');
+
+  try {
+    const data = await apiGet(`/api/info?path=${encodeURIComponent(path)}`);
+    renderInspectResult(data);
+    log(`Inspection complete: ${data.distro_label || data.distro} (${data.filename})`, 'ok');
+  } catch (e) {
+    document.getElementById('inspect-result').innerHTML =
+      `<p class="empty-msg" style="color:#ff5555">Error: ${e.message}</p>`;
+    log('Inspection failed: ' + e.message, 'err');
+  }
+}
+
+function renderInspectResult(meta) {
+  const mb = meta.size_bytes ? (meta.size_bytes / 1048576).toFixed(1) : '?';
+  document.getElementById('inspect-result').innerHTML = `
+    <table class="meta-table">
+      <tr><td>File</td><td>${meta.filename || '—'}</td></tr>
+      <tr><td>Label</td><td>${meta.label || '—'}</td></tr>
+      <tr><td>Size</td><td>${mb} MB</td></tr>
+      <tr><td>Distro</td><td>
+        <span class="pill pill-red">${meta.distro || '?'}</span>
+        ${meta.distro_label ? ' ' + meta.distro_label : ''}
+      </td></tr>
+      <tr><td>Kernel</td><td>${meta.kernel || '—'}</td></tr>
+      <tr><td>Initrd</td><td>${meta.initrd || '—'}</td></tr>
+      <tr><td>Cmdline</td><td style="word-break:break-all;font-size:0.7rem">${meta.cmdline || '—'}</td></tr>
+    </table>`;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   INIT
+═══════════════════════════════════════════════════════════════════ */
+window.addEventListener('load', () => {
+  checkAPI();
+  refreshDrives();
+  log('Nightmare Loader UI initialised.', 'head');
+});
+</script>
+</body>
+</html>
