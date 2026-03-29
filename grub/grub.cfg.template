@@ -4,6 +4,10 @@
 set default=0
 set timeout=10
 
+# Locate the USB drive by its volume label so ISO paths work on any
+# machine regardless of which port or slot the drive is plugged into.
+search --no-floppy --label --set=root NIGHTMARE
+
 insmod part_gpt
 insmod part_msdos
 insmod fat
@@ -13,8 +17,12 @@ insmod linux
 insmod all_video
 insmod gfxterm
 
-set gfxmode=auto
-terminal_output gfxterm
+# Enable graphical terminal if the font is available;
+# fall back silently to text mode on hardware that lacks it.
+if loadfont ($root)/boot/grub/fonts/unicode.pf2; then
+    set gfxmode=auto
+    terminal_output gfxterm
+fi
 
 # ---------- ISO ENTRIES (managed by nightmare-loader) ----------
 # Each ISO appears as a menu entry below.

@@ -153,9 +153,10 @@ def prepare(device: str, layout: str, label: str, yes: bool) -> None:
             # Install GRUB for UEFI
             click.echo("Installing GRUB (UEFI)…")
             install_grub_efi(mp, removable=True)
-            # Write initial (empty) grub.cfg
-            write_grub_cfg(mp, [])
-            save_state(mp, {"entries": []})
+            # Write initial (empty) grub.cfg – pass label so the search
+            # command in the header matches the FAT volume label.
+            write_grub_cfg(mp, [], label=label)
+            save_state(mp, {"entries": [], "label": label})
     else:  # gpt
         esp, data = prepare_drive_gpt(device, label=label)
         with _with_mount(device, data) as mp:
@@ -174,8 +175,8 @@ def prepare(device: str, layout: str, label: str, yes: bool) -> None:
                         unmount(esp_mp)
                     except Exception:
                         pass
-            write_grub_cfg(mp, [])
-            save_state(mp, {"entries": []})
+            write_grub_cfg(mp, [], label=label)
+            save_state(mp, {"entries": [], "label": label})
 
     click.echo(f"Done. Drive {device} is ready. Add ISOs with:")
     click.echo(f"  sudo nightmare-loader add {device} <path-to.iso>")
@@ -239,7 +240,8 @@ def add_iso(device: str, iso_path: str, label: str | None, copy: bool) -> None:
         state["entries"] = [e for e in state["entries"] if e["filename"] != iso_path_obj.name]
         state["entries"].append(entry)
         save_state(mp, state)
-        write_grub_cfg(mp, state["entries"])
+        drive_label = state.get("label", "NIGHTMARE")
+        write_grub_cfg(mp, state["entries"], label=drive_label)
 
     click.echo(f"Added '{menu_label}' to {device}.")
 
@@ -279,7 +281,8 @@ def remove_iso(device: str, iso_name: str, keep_file: bool) -> None:
                 click.echo(f"Deleted {iso_file}.")
 
         save_state(mp, state)
-        write_grub_cfg(mp, state["entries"])
+        drive_label = state.get("label", "NIGHTMARE")
+        write_grub_cfg(mp, state["entries"], label=drive_label)
 
     click.echo(f"Removed '{iso_name}' from {device}.")
 
@@ -330,7 +333,8 @@ def update(device: str) -> None:
     partition = _partition_name(device, 1)
     with _with_mount(device, partition) as mp:
         state = load_state(mp)
-        cfg_path = write_grub_cfg(mp, state["entries"])
+        drive_label = state.get("label", "NIGHTMARE")
+        cfg_path = write_grub_cfg(mp, state["entries"], label=drive_label)
 
     click.echo(f"Updated {cfg_path}.")
 

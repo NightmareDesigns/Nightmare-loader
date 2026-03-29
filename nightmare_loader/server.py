@@ -191,8 +191,8 @@ class _Handler(BaseHTTPRequestHandler):
                         Path(mp, ISO_DIR).mkdir(parents=True, exist_ok=True)
                         install_grub_bios(device, mp)
                         install_grub_efi(mp, removable=True)
-                        write_grub_cfg(mp, [])
-                        save_state(mp, {"entries": []})
+                        write_grub_cfg(mp, [], label=label)
+                        save_state(mp, {"entries": [], "label": label})
                     finally:
                         try:
                             unmount(mp)
@@ -214,8 +214,8 @@ class _Handler(BaseHTTPRequestHandler):
                                     unmount(esp_mp)
                                 except Exception:
                                     pass
-                        write_grub_cfg(mp, [])
-                        save_state(mp, {"entries": []})
+                        write_grub_cfg(mp, [], label=label)
+                        save_state(mp, {"entries": [], "label": label})
                     finally:
                         try:
                             unmount(mp)
@@ -271,7 +271,8 @@ class _Handler(BaseHTTPRequestHandler):
                     ]
                     state["entries"].append(entry)
                     save_state(mp, state)
-                    write_grub_cfg(mp, state["entries"])
+                    drive_label = state.get("label", "NIGHTMARE")
+                    write_grub_cfg(mp, state["entries"], label=drive_label)
                 finally:
                     try:
                         unmount(mp)
@@ -316,7 +317,8 @@ class _Handler(BaseHTTPRequestHandler):
                         iso_file.unlink()
 
                     save_state(mp, state)
-                    write_grub_cfg(mp, state["entries"])
+                    drive_label = state.get("label", "NIGHTMARE")
+                    write_grub_cfg(mp, state["entries"], label=drive_label)
                 finally:
                     try:
                         unmount(mp)

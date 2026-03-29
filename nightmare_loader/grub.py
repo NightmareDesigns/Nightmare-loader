@@ -46,28 +46,49 @@ GRUB_MODULES = [
 ]
 
 # ---------------------------------------------------------------------------
-# Menu colour / theme defaults
+# GRUB config header builder
 # ---------------------------------------------------------------------------
-_HEADER = """\
-# Nightmare Loader – GRUB2 multi-ISO boot menu
-# Auto-generated – do not edit by hand; use nightmare-loader to manage ISOs.
 
-set default=0
-set timeout=10
+def _make_header(label: str = "NIGHTMARE") -> str:
+    """
+    Return the GRUB config header for a drive with the given volume label.
 
-insmod part_gpt
-insmod part_msdos
-insmod fat
-insmod iso9660
-insmod loopback
-insmod linux
-insmod all_video
-insmod gfxterm
+    The ``search`` command is critical: it tells GRUB to locate the USB drive
+    by its FAT volume label so that ISO paths (e.g. /isos/ubuntu.iso) resolve
+    correctly on any machine regardless of which USB port is used.
+    Without it the loopback entries will not be found on first boot.
 
-set gfxmode=auto
-terminal_output gfxterm
-
-"""
+    The ``loadfont`` / gfxterm block is wrapped in an ``if`` so systems that
+    lack the font file fall back gracefully to the text terminal.
+    """
+    return (
+        "# Nightmare Loader – GRUB2 multi-ISO boot menu\n"
+        "# Auto-generated – do not edit by hand; use nightmare-loader to manage ISOs.\n"
+        "\n"
+        "set default=0\n"
+        "set timeout=10\n"
+        "\n"
+        "# Locate the USB drive by its volume label so ISO paths work on any\n"
+        "# machine regardless of which port or slot the drive is plugged into.\n"
+        f"search --no-floppy --label --set=root {label}\n"
+        "\n"
+        "insmod part_gpt\n"
+        "insmod part_msdos\n"
+        "insmod fat\n"
+        "insmod iso9660\n"
+        "insmod loopback\n"
+        "insmod linux\n"
+        "insmod all_video\n"
+        "insmod gfxterm\n"
+        "\n"
+        "# Enable graphical terminal if the font is available;\n"
+        "# fall back silently to text mode on hardware that lacks it.\n"
+        "if loadfont ($root)/boot/grub/fonts/unicode.pf2; then\n"
+        "    set gfxmode=auto\n"
+        "    terminal_output gfxterm\n"
+        "fi\n"
+        "\n"
+    )
 
 _FOOTER = """
 menuentry "Reboot" {
@@ -118,7 +139,7 @@ def _windows_entry(label: str, isofile: str) -> str:
         """)
 
 
-def generate_grub_cfg(entries: list[dict]) -> str:
+def generate_grub_cfg(entries: list[dict], label: str = "NIGHTMARE") -> str:
     """
     Generate a complete grub.cfg string from a list of ISO entry dicts.
 
@@ -131,13 +152,18 @@ def generate_grub_cfg(entries: list[dict]) -> str:
     entries:
         List of entry dicts.  Expected keys: ``label``, ``isofile``,
         ``distro``, ``kernel``, ``initrd``, ``cmdline``.
+    label:
+        The FAT volume label of the drive.  Used in the ``search`` command
+        so GRUB can locate the USB drive on first boot regardless of which
+        port it is plugged into.  Must match the label used when the drive
+        was formatted (default ``NIGHTMARE``).
 
     Returns
     -------
     str
         Full grub.cfg file content.
     """
-    parts = [_HEADER]
+    parts = [_make_header(label)]
     for entry in entries:
         distro = entry.get("distro", "generic")
         label = entry.get("label", entry.get("distro_label", entry.get("filename", "Unknown")))
@@ -158,16 +184,27 @@ def generate_grub_cfg(entries: list[dict]) -> str:
     return "\n".join(parts)
 
 
-def write_grub_cfg(mount_point: str | Path, entries: list[dict]) -> Path:
+def write_grub_cfg(mount_point: str | Path, entries: list[dict],
+                   label: str = "NIGHTMARE") -> Path:
     """
     Write grub.cfg to ``<mount_point>/boot/grub/grub.cfg``.
+
+    Parameters
+    ----------
+    mount_point:
+        Root of the mounted USB drive.
+    entries:
+        ISO entries as returned by :func:`load_state`.
+    label:
+        FAT volume label of the drive.  Passed to :func:`generate_grub_cfg`
+        so the ``search`` command in the header uses the correct label.
 
     Returns the path to the written file.
     """
     mount_point = Path(mount_point)
     cfg_path = mount_point / GRUB_CFG
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
-    cfg_path.write_text(generate_grub_cfg(entries))
+    cfg_path.write_text(generate_grub_cfg(entries, label=label))
     return cfg_path
 
 
