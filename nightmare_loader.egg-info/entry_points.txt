@@ -1,2 +1,0 @@
-[console_scripts]
-nightmare-loader = nightmare_loader.cli:main
