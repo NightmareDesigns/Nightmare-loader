@@ -409,6 +409,32 @@
     .pill-red   { background: rgba(80,0,0,0.5);  border: 1px solid var(--red-dark);   color: #ff8888; }
     .pill-gray  { background: rgba(20,20,20,0.5); border: 1px solid #333;              color: #666; }
 
+    /* ── Privilege banner ──────────────────────────────────────────── */
+    #priv-banner {
+      display: none;
+      width: 100%;
+      max-width: 1100px;
+      margin: 0 auto 18px;
+      padding: 12px 18px;
+      background: rgba(100,20,0,0.55);
+      border: 1px solid var(--red-dark);
+      border-radius: var(--radius);
+      font-size: 0.78rem;
+      letter-spacing: 0.06em;
+      color: #ff9999;
+      line-height: 1.6;
+    }
+    #priv-banner strong { color: #ff4444; }
+    #priv-banner code {
+      background: rgba(0,0,0,0.45);
+      border: 1px solid rgba(200,0,0,0.3);
+      border-radius: 2px;
+      padding: 1px 6px;
+      color: var(--green);
+      font-family: 'Courier New', monospace;
+      font-size: 0.86em;
+    }
+
     /* ── Status bar ────────────────────────────────────────────────── */
     #status-bar {
       position: fixed;
@@ -500,6 +526,16 @@
     </div>
     <p id="subtitle">Multi-ISO Bootable USB Creator · UEFI + Legacy BIOS</p>
   </header>
+
+  <!-- ── Privilege warning banner (shown when not running as root) ──── -->
+  <div id="priv-banner">
+    ⚠ <strong>NOT RUNNING AS ADMIN</strong> — Prepare Drive and Add ISO (copy mode) require
+    root access.<br>
+    <strong>Easy fix:</strong> run <code>nightmare-loader install-launcher</code> once to create
+    a desktop shortcut, then launch Nightmare Loader from your application menu — it will
+    ask for your password automatically.
+    Alternatively: <code>sudo nightmare-loader ui</code>
+  </div>
 
   <!-- ── MAIN GRID ─────────────────────────────────────────────────── -->
   <div id="grid">
@@ -674,6 +710,7 @@
 <div id="status-bar">
   <div class="sb-item">Version: <span id="sb-version">…</span></div>
   <div class="sb-item">API: <span id="sb-api">checking…</span></div>
+  <div class="sb-item">Admin: <span id="sb-root">checking…</span></div>
   <div id="sb-status">READY</div>
 </div>
 
@@ -907,6 +944,29 @@ async function checkAPI() {
     apiEl.style.color = '#ff5555';
     verEl.textContent = '?';
     log('API unreachable – run:  nightmare-loader ui', 'err');
+  }
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   PRIVILEGE CHECK
+═══════════════════════════════════════════════════════════════════ */
+async function checkRoot() {
+  const rootEl = document.getElementById('sb-root');
+  try {
+    const data = await apiGet('/api/root');
+    const banner = document.getElementById('priv-banner');
+    if (data.root) {
+      rootEl.textContent = '● yes';
+      rootEl.style.color = 'var(--green)';
+    } else {
+      rootEl.textContent = '● no';
+      rootEl.style.color = '#ff5555';
+      banner.style.display = 'block';
+      log('⚠ Not running as admin – privileged operations will fail.', 'warn');
+    }
+  } catch {
+    if (rootEl) rootEl.textContent = '?';
   }
 }
 
@@ -1235,6 +1295,7 @@ function renderInspectResult(meta) {
 ═══════════════════════════════════════════════════════════════════ */
 window.addEventListener('load', () => {
   checkAPI();
+  checkRoot();
   refreshDrives();
   log('Nightmare Loader UI initialised.', 'head');
 });

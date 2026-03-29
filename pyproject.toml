@@ -14,7 +14,8 @@ dependencies = [
 ]
 
 [project.scripts]
-nightmare-loader = "nightmare_loader.cli:main"
+nightmare-loader     = "nightmare_loader.cli:main"
+nightmare-loader-gui = "nightmare_loader.cli:gui_main"
 
 [project.optional-dependencies]
 dev = [
@@ -27,7 +28,7 @@ where = ["."]
 include = ["nightmare_loader*"]
 
 [tool.setuptools.package-data]
-nightmare_loader = ["ui/*.html", "theme/*.txt"]
+nightmare_loader = ["ui/*.html", "theme/*.txt", "assets/*.desktop"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
