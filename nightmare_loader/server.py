@@ -179,8 +179,8 @@ class _Handler(BaseHTTPRequestHandler):
                 _partition_name,
             )
             from .grub import (
-                install_grub_bios, install_grub_efi, write_grub_cfg,
-                save_state, ISO_DIR,
+                install_grub_bios, install_grub_efi, install_grub_theme,
+                write_grub_cfg, save_state, ISO_DIR,
             )
 
             if layout == "hybrid":
@@ -191,6 +191,7 @@ class _Handler(BaseHTTPRequestHandler):
                         Path(mp, ISO_DIR).mkdir(parents=True, exist_ok=True)
                         install_grub_bios(device, mp)
                         install_grub_efi(mp, removable=True)
+                        install_grub_theme(mp)
                         write_grub_cfg(mp, [], label=label)
                         save_state(mp, {"entries": [], "label": label})
                     finally:
@@ -214,6 +215,7 @@ class _Handler(BaseHTTPRequestHandler):
                                     unmount(esp_mp)
                                 except Exception:
                                     pass
+                        install_grub_theme(mp)
                         write_grub_cfg(mp, [], label=label)
                         save_state(mp, {"entries": [], "label": label})
                     finally:

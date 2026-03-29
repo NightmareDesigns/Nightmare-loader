@@ -26,5 +26,8 @@ dev = [
 where = ["."]
 include = ["nightmare_loader*"]
 
+[tool.setuptools.package-data]
+nightmare_loader = ["ui/*.html", "theme/*.txt"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
