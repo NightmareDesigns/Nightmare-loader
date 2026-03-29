@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Nightmare Loader
+GenericName=Multi-ISO USB Boot Creator
+Comment=Create multi-ISO bootable USB drives (UEFI + Legacy BIOS)
+Exec=nightmare-loader-gui
+Icon=drive-removable-media
+Terminal=false
+Categories=System;Utility;
+Keywords=USB;boot;ISO;GRUB;multiboot;
+StartupNotify=true

@@ -25,6 +25,7 @@ Usage examples::
 from __future__ import annotations
 
 import os
+import shlex
 import shutil
 import sys
 import tempfile
@@ -414,11 +415,85 @@ def web_ui(port: int, no_browser: bool) -> None:
 
 
 # ---------------------------------------------------------------------------
+# nightmare-loader install-launcher
+# ---------------------------------------------------------------------------
+
+@cli.command("install-launcher")
+@click.option("--desktop", is_flag=True, default=False,
+              help="Also place a shortcut on ~/Desktop.")
+def install_launcher(desktop: bool) -> None:
+    """
+    Install a desktop launcher so Nightmare Loader can be started with a
+    double-click — no terminal required.
+
+    Creates a .desktop file in ~/.local/share/applications/ (and optionally
+    on ~/Desktop).  The launcher uses 'nightmare-loader-gui' which
+    automatically requests admin privileges via pkexec/sudo when needed.
+    """
+    from .launcher import install_desktop_launcher
+    paths = install_desktop_launcher(install_to_desktop=desktop)
+    for p in paths:
+        click.echo(f"Installed: {p}")
+    click.echo(
+        "\nDone. You can now launch Nightmare Loader from your application menu."
+    )
+    if desktop:
+        click.echo(
+            "A shortcut was also placed on your Desktop. "
+            "Right-click → Allow Launching if your file manager asks."
+        )
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
 def main() -> None:
     cli()
+
+
+def gui_main() -> None:
+    """
+    GUI entry-point launched by the desktop shortcut (``nightmare-loader-gui``).
+
+    If the process is not already running as root, re-executes itself with
+    ``pkexec`` (graphical polkit prompt) or, if unavailable, falls back to
+    ``sudo`` inside a terminal emulator.  Once running as root the web UI
+    server is started and a browser window is opened automatically.
+
+    On non-Unix platforms (Windows) privilege escalation is skipped and the
+    server starts directly; the UI will show a warning if operations fail.
+    """
+    # Only attempt elevation on Unix-like systems
+    if sys.platform != "win32" and os.geteuid() != 0:
+        self_args = [sys.argv[0]] + sys.argv[1:]
+        # Preference order for graphical privilege elevation
+        for tool in ("pkexec", "kdesudo", "gksudo"):
+            if shutil.which(tool):
+                os.execvp(tool, [tool] + self_args)
+                # os.execvp replaces the current process – code below is
+                # only reached if execvp fails, which is extremely rare.
+
+        # None of the graphical tools found – open a terminal with sudo
+        # Build the command as a proper list to avoid shell injection
+        sudo_argv = ["sudo"] + self_args
+        sudo_cmd  = " ".join(shlex.quote(a) for a in sudo_argv)
+        pause_cmd = sudo_cmd + "; echo; read -rp 'Press Enter to close…'"
+        for term in (
+            "x-terminal-emulator",
+            "gnome-terminal",
+            "konsole",
+            "xfce4-terminal",
+            "xterm",
+        ):
+            if shutil.which(term):
+                if term == "gnome-terminal":
+                    os.execvp(term, [term, "--", "bash", "-c", pause_cmd])
+                else:
+                    os.execvp(term, [term, "-e", "bash", "-c", pause_cmd])
+
+    # Running as root (or elevation succeeded, or Windows) – start the server
+    start_server(open_browser=True)
 
 
 if __name__ == "__main__":

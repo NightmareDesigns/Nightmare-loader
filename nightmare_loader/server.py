@@ -18,6 +18,7 @@ POST /api/remove                 body: {device, iso_name}
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import tempfile
 import threading
@@ -62,6 +63,10 @@ class _Handler(BaseHTTPRequestHandler):
         elif path == "/api/version":
             from . import __version__
             self._json({"version": __version__})
+        elif path == "/api/root":
+            # os.geteuid() is Unix-only; on Windows treat as non-root
+            is_root = (os.geteuid() == 0) if hasattr(os, "geteuid") else False
+            self._json({"root": is_root})
         elif path == "/api/info":
             params = parse_qs(parsed.query)
             iso_path = unquote(params.get("path", [""])[0])

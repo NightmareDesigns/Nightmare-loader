@@ -252,3 +252,18 @@ class TestNotFound:
 def test_default_port_is_integer():
     assert isinstance(DEFAULT_PORT, int)
     assert 1024 < DEFAULT_PORT < 65535
+
+
+# ---------------------------------------------------------------------------
+# GET /api/root
+# ---------------------------------------------------------------------------
+
+class TestApiRoot:
+    def test_returns_root_key(self, live_server):
+        status, body = _get(live_server + "/api/root")
+        assert status == 200
+        assert "root" in body
+
+    def test_root_is_boolean(self, live_server):
+        _, body = _get(live_server + "/api/root")
+        assert isinstance(body["root"], bool)
