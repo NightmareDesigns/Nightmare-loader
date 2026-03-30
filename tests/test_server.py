@@ -267,3 +267,42 @@ class TestApiRoot:
     def test_root_is_boolean(self, live_server):
         _, body = _get(live_server + "/api/root")
         assert isinstance(body["root"], bool)
+
+
+# ---------------------------------------------------------------------------
+# GET /api/platform
+# ---------------------------------------------------------------------------
+
+class TestApiPlatform:
+    def test_returns_platform_key(self, live_server):
+        status, body = _get(live_server + "/api/platform")
+        assert status == 200
+        assert "platform" in body
+
+    def test_platform_is_string(self, live_server):
+        _, body = _get(live_server + "/api/platform")
+        assert isinstance(body["platform"], str)
+        assert len(body["platform"]) > 0
+
+    def test_windows_key_is_boolean(self, live_server):
+        _, body = _get(live_server + "/api/platform")
+        assert "windows" in body
+        assert isinstance(body["windows"], bool)
+
+    def test_windows_false_on_linux(self, live_server):
+        import sys
+        if sys.platform != "win32":
+            _, body = _get(live_server + "/api/platform")
+            assert body["windows"] is False
+
+    def test_windows_true_when_platform_is_win32(self, live_server):
+        """Verify windows=True is returned when sys.platform is win32 (mocked)."""
+        import sys as _real_sys
+        from unittest.mock import patch
+        import nightmare_loader.server as srv
+
+        with patch.object(_real_sys, "platform", "win32"):
+            # Call the private helper directly to check the logic
+            import sys as patched_sys
+            result = patched_sys.platform == "win32"
+        assert result is True

@@ -128,3 +128,102 @@ class TestListRemovableDrives:
             drives = list_removable_drives()
 
         assert drives == []
+
+
+class TestListRemovableDrivesWindows:
+    """Tests for the Windows drive listing path (_list_removable_drives_windows)."""
+
+    def test_returns_drives_from_powershell(self):
+        from nightmare_loader.drive import _list_removable_drives_windows
+
+        ps_output = json.dumps([
+            {
+                "Device": "\\\\.\\PHYSICALDRIVE1",
+                "Letters": "E",
+                "Model": "SanDisk Ultra USB 3.0",
+                "Size": "16013852672",
+            }
+        ])
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = ps_output
+
+        with patch("subprocess.run", return_value=mock_result):
+            drives = _list_removable_drives_windows()
+
+        assert len(drives) == 1
+        assert drives[0]["device"] == "E\\"
+        assert drives[0]["model"] == "SanDisk Ultra USB 3.0"
+        assert drives[0]["transport"] == "usb"
+        assert drives[0]["size"] == "16013852672"
+
+    def test_single_drive_dict_not_list(self):
+        """PowerShell returns a plain dict when only one drive is present."""
+        from nightmare_loader.drive import _list_removable_drives_windows
+
+        ps_output = json.dumps({
+            "Device": "\\\\.\\PHYSICALDRIVE1",
+            "Letters": "F",
+            "Model": "Kingston DT",
+            "Size": "8000000000",
+        })
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = ps_output
+
+        with patch("subprocess.run", return_value=mock_result):
+            drives = _list_removable_drives_windows()
+
+        assert len(drives) == 1
+        assert drives[0]["device"] == "F\\"
+
+    def test_empty_on_no_output(self):
+        from nightmare_loader.drive import _list_removable_drives_windows
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = ""
+
+        with patch("subprocess.run", return_value=mock_result):
+            drives = _list_removable_drives_windows()
+
+        assert drives == []
+
+    def test_raises_on_powershell_not_found(self):
+        from nightmare_loader.drive import _list_removable_drives_windows, DriveError
+
+        with patch("subprocess.run", side_effect=FileNotFoundError):
+            with pytest.raises(DriveError, match="PowerShell"):
+                _list_removable_drives_windows()
+
+    def test_raises_on_timeout(self):
+        import subprocess
+        from nightmare_loader.drive import _list_removable_drives_windows, DriveError
+
+        with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("powershell", 15)):
+            with pytest.raises(DriveError, match="timed out"):
+                _list_removable_drives_windows()
+
+    def test_list_removable_drives_dispatches_to_windows(self):
+        """list_removable_drives() should call the Windows path on win32."""
+        from nightmare_loader import drive as drv
+
+        with patch("nightmare_loader.drive.sys") as mock_sys, \
+             patch.object(drv, "_list_removable_drives_windows", return_value=[]) as mock_win, \
+             patch.object(drv, "_list_removable_drives_linux", return_value=[]) as mock_lin:
+            mock_sys.platform = "win32"
+            drv.list_removable_drives()
+            mock_win.assert_called_once()
+            mock_lin.assert_not_called()
+
+    def test_list_removable_drives_dispatches_to_linux(self):
+        """list_removable_drives() should call the Linux path on linux."""
+        from nightmare_loader import drive as drv
+
+        with patch("nightmare_loader.drive.sys") as mock_sys, \
+             patch.object(drv, "_list_removable_drives_windows", return_value=[]) as mock_win, \
+             patch.object(drv, "_list_removable_drives_linux", return_value=[]) as mock_lin:
+            mock_sys.platform = "linux"
+            drv.list_removable_drives()
+            mock_lin.assert_called_once()
+            mock_win.assert_not_called()

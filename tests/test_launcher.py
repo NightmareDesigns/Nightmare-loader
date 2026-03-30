@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import stat
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -77,3 +77,87 @@ class TestInstallDesktopLauncher:
             paths = install_desktop_launcher(install_to_desktop=False)
         assert len(paths) == 1
         assert paths[0].parent == apps_dir
+
+
+class TestInstallWindowsShortcut:
+    """Tests for the Windows .lnk shortcut creation path."""
+
+    def test_dispatches_to_windows_on_win32(self, tmp_path):
+        from nightmare_loader import launcher as lnch
+
+        with patch("nightmare_loader.launcher.sys") as mock_sys, \
+             patch.object(lnch, "_install_windows_shortcut", return_value=[]) as mock_win, \
+             patch.object(lnch, "_install_linux_desktop", return_value=[]) as mock_lin:
+            mock_sys.platform = "win32"
+            install_desktop_launcher()
+            mock_win.assert_called_once()
+            mock_lin.assert_not_called()
+
+    def test_dispatches_to_linux_on_linux(self, tmp_path):
+        from nightmare_loader import launcher as lnch
+        apps_dir = tmp_path / "applications"
+
+        with patch("nightmare_loader.launcher.sys") as mock_sys, \
+             patch.object(lnch, "_install_windows_shortcut", return_value=[]) as mock_win, \
+             patch.object(lnch, "_install_linux_desktop", return_value=[]) as mock_lin:
+            mock_sys.platform = "linux"
+            install_desktop_launcher()
+            mock_lin.assert_called_once()
+            mock_win.assert_not_called()
+
+    def test_create_lnk_calls_powershell(self, tmp_path):
+        from nightmare_loader.launcher import _create_lnk
+        dest = tmp_path / "NL.lnk"
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stderr = ""
+        with patch("subprocess.run", return_value=mock_result) as mock_run:
+            _create_lnk(dest, "C:\\some\\exe.exe", "description")
+        # PowerShell should have been called with WScript.Shell in the command
+        cmd_args = mock_run.call_args[0][0]
+        assert cmd_args[0] == "powershell"
+        # The PS script is the last argument (after "-NoProfile" and "-Command")
+        ps_cmd = cmd_args[-1]
+        assert "WScript.Shell" in ps_cmd
+
+    def test_create_lnk_raises_on_failure(self, tmp_path):
+        from nightmare_loader.launcher import _create_lnk
+        dest = tmp_path / "NL.lnk"
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+        mock_result.stderr = "Access denied"
+        with patch("subprocess.run", return_value=mock_result):
+            with pytest.raises(OSError, match="Failed to create shortcut"):
+                _create_lnk(dest, "C:\\exe.exe", "desc")
+
+    def test_install_windows_shortcut_menu_only(self, tmp_path):
+        from nightmare_loader.launcher import _install_windows_shortcut
+        start_menu = tmp_path / "StartMenu"
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stderr = ""
+        with patch("nightmare_loader.launcher._windows_start_menu_dir", return_value=start_menu), \
+             patch("subprocess.run", return_value=mock_result):
+            paths = _install_windows_shortcut(
+                install_to_desktop=False,
+                executable="C:\\nightmare-loader-gui.exe",
+            )
+        assert len(paths) == 1
+        assert paths[0] == start_menu / "Nightmare Loader.lnk"
+
+    def test_install_windows_shortcut_with_desktop(self, tmp_path):
+        from nightmare_loader.launcher import _install_windows_shortcut
+        start_menu = tmp_path / "StartMenu"
+        desktop = tmp_path / "Desktop"
+        desktop.mkdir()
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stderr = ""
+        with patch("nightmare_loader.launcher._windows_start_menu_dir", return_value=start_menu), \
+             patch("pathlib.Path.home", return_value=tmp_path), \
+             patch("subprocess.run", return_value=mock_result):
+            paths = _install_windows_shortcut(
+                install_to_desktop=True,
+                executable="C:\\nightmare-loader-gui.exe",
+            )
+        assert len(paths) == 2

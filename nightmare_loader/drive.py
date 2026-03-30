@@ -19,10 +19,12 @@ available on the host system.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -42,14 +44,21 @@ def list_removable_drives() -> list[dict]:
     Each entry is a dict::
 
         {
-            "device": "/dev/sdb",
-            "size":   "16G",
+            "device": "/dev/sdb",        # Linux  – or  "D:\\" on Windows
+            "size":   "16000000000",     # bytes as string
             "model":  "SanDisk Ultra",
             "transport": "usb",
         }
 
-    Requires ``lsblk`` (standard on Linux).
+    Dispatches to a platform-specific implementation.
     """
+    if sys.platform == "win32":
+        return _list_removable_drives_windows()
+    return _list_removable_drives_linux()
+
+
+def _list_removable_drives_linux() -> list[dict]:
+    """Linux implementation – uses ``lsblk``."""
     result = subprocess.run(
         [
             "lsblk",
@@ -64,7 +73,6 @@ def list_removable_drives() -> list[dict]:
     if result.returncode != 0:
         raise DriveError(f"lsblk failed: {result.stderr.strip()}")
 
-    import json
     data = json.loads(result.stdout)
     drives = []
     for dev in data.get("blockdevices", []):
@@ -78,6 +86,66 @@ def list_removable_drives() -> list[dict]:
                 "size": dev.get("size", "?"),
                 "model": (dev.get("model") or "").strip(),
                 "transport": dev.get("tran", ""),
+            }
+        )
+    return drives
+
+
+def _list_removable_drives_windows() -> list[dict]:
+    """
+    Windows implementation – queries removable drives via PowerShell/WMI.
+
+    Returns drives with ``device`` set to the drive letter (e.g. ``D:\\``).
+    Disk partitioning operations (prepare/add/remove) are not supported on
+    Windows; the list lets the web UI inspect ISOs on an already-prepared USB.
+    """
+    ps_script = (
+        "Get-WmiObject Win32_DiskDrive "
+        "| Where-Object { $_.MediaType -like '*Removable*' -or $_.InterfaceType -eq 'USB' } "
+        "| ForEach-Object { "
+        "    $d = $_; "
+        "    $letters = @(Get-WmiObject -Query "
+        "        \"ASSOCIATORS OF {Win32_DiskDrive.DeviceID='$(($d.DeviceID -replace '\\\\','\\\\\\\\'))'} "
+        "        WHERE AssocClass=Win32_DiskDriveToDiskPartition\" "
+        "        | ForEach-Object { (Get-WmiObject -Query "
+        "            \"ASSOCIATORS OF {Win32_DiskPartition.DeviceID='$($_.DeviceID)'} "
+        "            WHERE AssocClass=Win32_LogicalDiskToPartition\").DeviceID }); "
+        "    [PSCustomObject]@{ Device=$d.DeviceID; Letters=($letters -join ','); "
+        "        Model=$d.Model; Size=$d.Size } "
+        "} | ConvertTo-Json -Compress"
+    )
+    try:
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", ps_script],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except FileNotFoundError:
+        raise DriveError("PowerShell not found. Cannot enumerate drives on this system.")
+    except subprocess.TimeoutExpired:
+        raise DriveError("Drive enumeration timed out.")
+
+    stdout = result.stdout.strip()
+    if not stdout:
+        return []
+
+    raw = json.loads(stdout)
+    # PowerShell returns a single object (not a list) when there is only one drive
+    if isinstance(raw, dict):
+        raw = [raw]
+
+    drives = []
+    for item in raw:
+        letters = item.get("Letters", "")
+        # Use the first drive letter as the device path; fall back to DeviceID
+        device = (letters.split(",")[0].strip() + "\\") if letters else item.get("Device", "?")
+        drives.append(
+            {
+                "device":    device,
+                "size":      str(item.get("Size") or "?"),
+                "model":     (item.get("Model") or "").strip(),
+                "transport": "usb",
             }
         )
     return drives

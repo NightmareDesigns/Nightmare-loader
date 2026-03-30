@@ -435,6 +435,31 @@
       font-size: 0.86em;
     }
 
+    /* ── Windows notice banner ─────────────────────────────────────── */
+    #win-banner {
+      width: 100%;
+      max-width: 1100px;
+      margin: 0 auto 18px;
+      padding: 12px 18px;
+      background: rgba(0,30,60,0.65);
+      border: 1px solid rgba(0,100,200,0.5);
+      border-radius: var(--radius);
+      font-size: 0.78rem;
+      letter-spacing: 0.06em;
+      color: #99ccff;
+      line-height: 1.6;
+    }
+    #win-banner strong { color: #66aaff; }
+    #win-banner code {
+      background: rgba(0,0,0,0.45);
+      border: 1px solid rgba(0,80,160,0.4);
+      border-radius: 2px;
+      padding: 1px 6px;
+      color: var(--green);
+      font-family: 'Courier New', monospace;
+      font-size: 0.86em;
+    }
+
     /* ── Status bar ────────────────────────────────────────────────── */
     #status-bar {
       position: fixed;
@@ -535,6 +560,16 @@
     a desktop shortcut, then launch Nightmare Loader from your application menu — it will
     ask for your password automatically.
     Alternatively: <code>sudo nightmare-loader ui</code>
+  </div>
+
+  <!-- ── Windows notice banner ─────────────────────────────────────── -->
+  <div id="win-banner" style="display:none">
+    🪟 <strong>WINDOWS MODE</strong> — ISO inspection and USB drive detection are supported.
+    Partitioning + GRUB installation require Linux (or
+    <a href="https://learn.microsoft.com/windows/wsl/install" target="_blank"
+       style="color:var(--green)">WSL 2</a>).
+    <strong>To prepare a drive</strong>: install Nightmare Loader inside WSL 2, then run
+    <code>sudo nightmare-loader prepare /dev/sd&lt;x&gt;</code> from the WSL terminal.
   </div>
 
   <!-- ── MAIN GRID ─────────────────────────────────────────────────── -->
@@ -972,6 +1007,24 @@ async function checkRoot() {
 
 
 /* ═══════════════════════════════════════════════════════════════════
+   PLATFORM CHECK (Windows notice)
+═══════════════════════════════════════════════════════════════════ */
+async function checkPlatform() {
+  try {
+    const data = await apiGet('/api/platform');
+    if (data.windows) {
+      document.getElementById('win-banner').style.display = 'block';
+      // Hide the Linux-specific priv banner on Windows – UAC handles elevation
+      document.getElementById('priv-banner').style.display = 'none';
+      log('Running on Windows — disk partitioning not available; use WSL 2.', 'warn');
+    }
+  } catch {
+    // Platform endpoint not available – ignore silently
+  }
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
    DRIVES
 ═══════════════════════════════════════════════════════════════════ */
 let selectedDrive = null;
@@ -1295,6 +1348,7 @@ function renderInspectResult(meta) {
 ═══════════════════════════════════════════════════════════════════ */
 window.addEventListener('load', () => {
   checkAPI();
+  checkPlatform();
   checkRoot();
   refreshDrives();
   log('Nightmare Loader UI initialised.', 'head');

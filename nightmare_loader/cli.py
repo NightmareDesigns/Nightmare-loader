@@ -420,28 +420,39 @@ def web_ui(port: int, no_browser: bool) -> None:
 
 @cli.command("install-launcher")
 @click.option("--desktop", is_flag=True, default=False,
-              help="Also place a shortcut on ~/Desktop.")
+              help="Also place a shortcut on ~/Desktop (Linux) or Desktop (Windows).")
 def install_launcher(desktop: bool) -> None:
     """
     Install a desktop launcher so Nightmare Loader can be started with a
     double-click — no terminal required.
 
-    Creates a .desktop file in ~/.local/share/applications/ (and optionally
-    on ~/Desktop).  The launcher uses 'nightmare-loader-gui' which
-    automatically requests admin privileges via pkexec/sudo when needed.
+    Linux/macOS: creates a .desktop file in ~/.local/share/applications/.
+    Windows: creates a .lnk shortcut in the Start Menu Programs folder.
+
+    The launcher (nightmare-loader-gui) automatically requests admin
+    privileges when needed (pkexec/sudo on Linux, UAC on Windows).
     """
     from .launcher import install_desktop_launcher
     paths = install_desktop_launcher(install_to_desktop=desktop)
     for p in paths:
         click.echo(f"Installed: {p}")
-    click.echo(
-        "\nDone. You can now launch Nightmare Loader from your application menu."
-    )
-    if desktop:
+    if sys.platform == "win32":
         click.echo(
-            "A shortcut was also placed on your Desktop. "
-            "Right-click → Allow Launching if your file manager asks."
+            "\nDone. Nightmare Loader is now in your Start Menu.\n"
+            "It will request administrator access via UAC when launched."
         )
+    else:
+        click.echo(
+            "\nDone. You can now launch Nightmare Loader from your application menu."
+        )
+    if desktop:
+        if sys.platform == "win32":
+            click.echo("A shortcut was also placed on your Desktop.")
+        else:
+            click.echo(
+                "A shortcut was also placed on your Desktop. "
+                "Right-click → Allow Launching if your file manager asks."
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -456,16 +467,19 @@ def gui_main() -> None:
     """
     GUI entry-point launched by the desktop shortcut (``nightmare-loader-gui``).
 
-    If the process is not already running as root, re-executes itself with
-    ``pkexec`` (graphical polkit prompt) or, if unavailable, falls back to
-    ``sudo`` inside a terminal emulator.  Once running as root the web UI
-    server is started and a browser window is opened automatically.
+    * **Linux/macOS** – if not already root, re-executes itself with
+      ``pkexec`` / ``kdesudo`` / ``gksudo`` (graphical polkit prompt), or
+      falls back to ``sudo`` inside a terminal emulator.
+    * **Windows** – if not already running as administrator, re-launches
+      itself with the ``runas`` verb via ``ShellExecuteW`` (triggers UAC
+      prompt) and exits the current process.
 
-    On non-Unix platforms (Windows) privilege escalation is skipped and the
-    server starts directly; the UI will show a warning if operations fail.
+    Once running with sufficient privileges, the web UI server is started
+    and a browser window is opened automatically.
     """
-    # Only attempt elevation on Unix-like systems
-    if sys.platform != "win32" and os.geteuid() != 0:
+    if sys.platform == "win32":
+        _ensure_admin_windows()
+    elif os.geteuid() != 0:
         self_args = [sys.argv[0]] + sys.argv[1:]
         # Preference order for graphical privilege elevation
         for tool in ("pkexec", "kdesudo", "gksudo"):
@@ -492,8 +506,44 @@ def gui_main() -> None:
                 else:
                     os.execvp(term, [term, "-e", "bash", "-c", pause_cmd])
 
-    # Running as root (or elevation succeeded, or Windows) – start the server
+    # Running with sufficient privileges (or elevation succeeded) – start the server
     start_server(open_browser=True)
+
+
+def _ensure_admin_windows() -> None:
+    """
+    On Windows, re-launch as administrator via UAC if not already elevated.
+
+    Uses ``ctypes.windll.shell32.ShellExecuteW`` with the ``runas`` verb
+    which triggers the standard UAC consent prompt.  The current
+    (un-elevated) process exits immediately after spawning the elevated one.
+    """
+    import ctypes
+    try:
+        is_admin: bool = bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except AttributeError:
+        is_admin = False
+
+    if not is_admin:
+        # Re-launch elevated; ShellExecuteW returns ≤32 on failure
+        # subprocess.list2cmdline() properly escapes args for Windows
+        import subprocess as _sp
+        args_str = _sp.list2cmdline(sys.argv)
+        ret = ctypes.windll.shell32.ShellExecuteW(
+            None,          # hwnd
+            "runas",       # verb – triggers UAC
+            sys.executable,
+            args_str,
+            None,          # working directory (inherit)
+            1,             # nShowCmd = SW_NORMAL
+        )
+        if ret <= 32:
+            click.echo(
+                "Administrator access is required to manage USB drives.\n"
+                "Please right-click the shortcut and choose 'Run as administrator'.",
+                err=True,
+            )
+        sys.exit(0)
 
 
 if __name__ == "__main__":
