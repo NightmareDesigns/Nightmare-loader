@@ -161,3 +161,55 @@ class TestInstallWindowsShortcut:
                 executable="C:\\nightmare-loader-gui.exe",
             )
         assert len(paths) == 2
+
+
+class TestInstallTermuxWidget:
+    """Tests for the Android/Termux shortcut creation path."""
+
+    def test_dispatches_to_termux_when_on_termux(self, tmp_path):
+        from nightmare_loader import launcher as lnch
+
+        with patch("nightmare_loader.launcher.sys") as mock_sys, \
+             patch("nightmare_loader.drive._is_termux", return_value=True), \
+             patch.object(lnch, "_install_termux_widget", return_value=[]) as mock_termux, \
+             patch.object(lnch, "_install_linux_desktop", return_value=[]) as mock_lin, \
+             patch.object(lnch, "_install_windows_shortcut", return_value=[]) as mock_win:
+            mock_sys.platform = "linux"
+            install_desktop_launcher()
+            mock_termux.assert_called_once()
+            mock_lin.assert_not_called()
+            mock_win.assert_not_called()
+
+    def test_creates_shortcut_script(self, tmp_path):
+        from nightmare_loader.launcher import _install_termux_widget
+
+        shortcuts_dir = tmp_path / ".shortcuts"
+        with patch("nightmare_loader.launcher._TERMUX_SHORTCUTS_DIR", shortcuts_dir):
+            paths = _install_termux_widget(executable="/usr/bin/nightmare-loader-gui")
+
+        assert len(paths) == 1
+        script = paths[0]
+        assert script.name == "nightmare-loader.sh"
+        assert script.exists()
+        content = script.read_text()
+        assert "#!/data/data/com.termux" in content
+        assert "nightmare-loader-gui" in content
+
+    def test_script_is_executable(self, tmp_path):
+        from nightmare_loader.launcher import _install_termux_widget
+
+        shortcuts_dir = tmp_path / ".shortcuts"
+        with patch("nightmare_loader.launcher._TERMUX_SHORTCUTS_DIR", shortcuts_dir):
+            paths = _install_termux_widget(executable="/usr/bin/nightmare-loader-gui")
+
+        script = paths[0]
+        assert script.stat().st_mode & stat.S_IXUSR
+
+    def test_shortcuts_dir_created_if_missing(self, tmp_path):
+        from nightmare_loader.launcher import _install_termux_widget
+
+        shortcuts_dir = tmp_path / "new" / ".shortcuts"
+        assert not shortcuts_dir.exists()
+        with patch("nightmare_loader.launcher._TERMUX_SHORTCUTS_DIR", shortcuts_dir):
+            _install_termux_widget(executable="/usr/bin/nightmare-loader-gui")
+        assert shortcuts_dir.is_dir()

@@ -9,10 +9,13 @@ terminal command.
   ``~/.local/share/applications/`` (and optionally ``~/Desktop/``).
 * **Windows** — creates ``.lnk`` shortcuts in the Start Menu
   ``Programs`` folder (and optionally on the Desktop) using PowerShell.
+* **Android / Termux** — creates a shell script in ``~/.shortcuts/`` so
+  the app can be launched from the Termux:Widget home-screen widget.
 """
 
 from __future__ import annotations
 
+import shlex
 import shutil
 import stat
 import subprocess
@@ -36,13 +39,15 @@ def install_desktop_launcher(
 
     On Linux/macOS creates a ``.desktop`` file in
     ``~/.local/share/applications/``.  On Windows creates a ``.lnk`` shortcut
-    in the user's Start Menu Programs folder.  Optionally also places a
-    shortcut on ``~/Desktop`` on both platforms.
+    in the user's Start Menu Programs folder.  On Android/Termux creates a
+    shell script in ``~/.shortcuts/`` for use with the Termux:Widget.
+    Optionally also places a shortcut on ``~/Desktop`` on Linux/Windows.
 
     Parameters
     ----------
     install_to_desktop:
-        If ``True``, also create a launcher on ``~/Desktop``.
+        If ``True``, also create a launcher on ``~/Desktop`` (Linux/Windows).
+        On Android this parameter is ignored (no separate Desktop).
     executable:
         Override the target executable path.  Defaults to the
         ``nightmare-loader-gui`` script resolved from the current Python
@@ -53,6 +58,9 @@ def install_desktop_launcher(
     list[Path]
         Paths of every shortcut file written.
     """
+    from .drive import _is_termux
+    if _is_termux():
+        return _install_termux_widget(executable=executable)
     if sys.platform == "win32":
         return _install_windows_shortcut(
             install_to_desktop=install_to_desktop,
@@ -94,6 +102,54 @@ def _install_linux_desktop(
         written.append(desktop_dest)
 
     return written
+
+
+# ---------------------------------------------------------------------------
+# Android / Termux implementation
+# ---------------------------------------------------------------------------
+
+# Termux:Widget reads scripts from ~/.shortcuts/
+_TERMUX_SHORTCUTS_DIR = Path.home() / ".shortcuts"
+
+
+def _install_termux_widget(
+    executable: str | None = None,
+) -> list[Path]:
+    """
+    Install a Termux:Widget launcher script for Nightmare Loader.
+
+    Creates ``~/.shortcuts/nightmare-loader.sh`` — a small shell script
+    that starts the web UI server.  Once the Termux:Widget is added to the
+    Android home screen the script will appear there as a tap target.
+
+    Root access is attempted via ``tsu`` (Termux su helper) when it is
+    available, falling back to a plain launch so ISO inspection still works
+    without root.
+    """
+    exec_path = executable or _find_gui_executable()
+
+    _TERMUX_SHORTCUTS_DIR.mkdir(parents=True, exist_ok=True)
+
+    script_path = _TERMUX_SHORTCUTS_DIR / "nightmare-loader.sh"
+
+    # Prefer 'tsu' (Termux root helper) for elevated launch; fall back gracefully
+    script_lines = [
+        "#!/data/data/com.termux/files/usr/bin/bash",
+        "# Nightmare Loader – Termux:Widget launcher",
+        "# Tap this shortcut from the Termux:Widget on your home screen.",
+        "",
+        "NL_CMD=" + shlex.quote(exec_path),
+        "",
+        'if command -v tsu >/dev/null 2>&1; then',
+        '    exec tsu -c "$NL_CMD"',
+        "else",
+        '    exec "$NL_CMD"',
+        "fi",
+    ]
+    script_path.write_text("\n".join(script_lines) + "\n", encoding="utf-8")
+    script_path.chmod(script_path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+    return [script_path]
 
 
 # ---------------------------------------------------------------------------

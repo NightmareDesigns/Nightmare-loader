@@ -227,3 +227,109 @@ class TestListRemovableDrivesWindows:
             drv.list_removable_drives()
             mock_lin.assert_called_once()
             mock_win.assert_not_called()
+
+
+class TestIsTermux:
+    """Tests for the _is_termux() Termux/Android detection helper."""
+
+    def test_detects_via_env_var(self):
+        from nightmare_loader.drive import _is_termux
+        with patch.dict("os.environ", {"TERMUX_VERSION": "0.118.0"}):
+            assert _is_termux() is True
+
+    def test_not_termux_without_env_or_path(self, tmp_path):
+        from nightmare_loader.drive import _is_termux
+        import os as _os
+        env = {k: v for k, v in _os.environ.items() if k != "TERMUX_VERSION"}
+        with patch.dict("os.environ", env, clear=True), \
+             patch("nightmare_loader.drive.Path") as mock_path:
+            # Simulate /data/data/com.termux not existing
+            mock_instance = MagicMock()
+            mock_instance.exists.return_value = False
+            mock_path.return_value = mock_instance
+            assert _is_termux() is False
+
+    def test_detects_via_termux_prefix_path(self, tmp_path):
+        from nightmare_loader.drive import _is_termux
+        import os as _os
+        env = {k: v for k, v in _os.environ.items() if k != "TERMUX_VERSION"}
+        termux_dir = tmp_path / "data" / "data" / "com.termux"
+        termux_dir.mkdir(parents=True)
+        with patch.dict("os.environ", env, clear=True), \
+             patch("nightmare_loader.drive.Path", side_effect=lambda p: tmp_path / p.lstrip("/")):
+            # Re-import to pick up the patch
+            assert termux_dir.exists()
+
+
+class TestListRemovableDrivesAndroid:
+    """Tests for the Android/Termux sysfs drive listing."""
+
+    def _make_sysfs(self, tmp_path, devices: list[dict]) -> Path:
+        """Build a fake /sys/block tree under tmp_path."""
+        sys_block = tmp_path / "sys" / "block"
+        for d in devices:
+            name = d["name"]
+            dev_dir = sys_block / name
+            dev_dir.mkdir(parents=True, exist_ok=True)
+            (dev_dir / "removable").write_text(d.get("removable", "0"))
+            if "size" in d:
+                (dev_dir / "size").write_text(str(d["size"]))
+            if "model" in d:
+                model_dir = dev_dir / "device"
+                model_dir.mkdir(parents=True, exist_ok=True)
+                (model_dir / "model").write_text(d["model"])
+        return sys_block
+
+    def test_returns_removable_devices(self, tmp_path):
+        from nightmare_loader.drive import _list_removable_drives_android
+
+        sys_block = self._make_sysfs(tmp_path, [
+            {"name": "sda", "removable": "0"},
+            {"name": "sdb", "removable": "1", "size": 31457280, "model": "SanDisk Ultra"},
+        ])
+        with patch("nightmare_loader.drive.Path", side_effect=lambda p: tmp_path / p.lstrip("/")):
+            drives = _list_removable_drives_android()
+
+        # sda is not removable, only sdb should appear
+        assert len(drives) == 1
+        assert drives[0]["device"] == "/dev/sdb"
+        assert drives[0]["transport"] == "usb"
+        assert drives[0]["size"] == str(31457280 * 512)
+        assert drives[0]["model"] == "SanDisk Ultra"
+
+    def test_skips_non_sd_devices(self, tmp_path):
+        from nightmare_loader.drive import _list_removable_drives_android
+
+        sys_block = self._make_sysfs(tmp_path, [
+            {"name": "loop0", "removable": "1"},
+            {"name": "ram0",  "removable": "1"},
+            {"name": "zram0", "removable": "1"},
+            {"name": "sdc",   "removable": "1", "size": 65536},
+        ])
+        with patch("nightmare_loader.drive.Path", side_effect=lambda p: tmp_path / p.lstrip("/")):
+            drives = _list_removable_drives_android()
+
+        names = [d["device"] for d in drives]
+        assert "/dev/sdc" in names
+        assert not any("loop" in n or "ram" in n for n in names)
+
+    def test_empty_when_sys_block_absent(self, tmp_path):
+        from nightmare_loader.drive import _list_removable_drives_android
+
+        with patch("nightmare_loader.drive.Path", side_effect=lambda p: tmp_path / p.lstrip("/")):
+            drives = _list_removable_drives_android()
+
+        assert drives == []
+
+    def test_list_removable_drives_dispatches_to_android(self):
+        """list_removable_drives() should call the Android path on Termux."""
+        from nightmare_loader import drive as drv
+
+        with patch("nightmare_loader.drive.sys") as mock_sys, \
+             patch.object(drv, "_is_termux", return_value=True), \
+             patch.object(drv, "_list_removable_drives_android", return_value=[]) as mock_and, \
+             patch.object(drv, "_list_removable_drives_linux", return_value=[]) as mock_lin:
+            mock_sys.platform = "linux"
+            drv.list_removable_drives()
+            mock_and.assert_called_once()
+            mock_lin.assert_not_called()

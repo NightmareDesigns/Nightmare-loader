@@ -37,6 +37,14 @@ class DriveError(Exception):
 # Discovery helpers
 # ---------------------------------------------------------------------------
 
+def _is_termux() -> bool:
+    """Return True when running inside the Termux Android terminal emulator."""
+    # Termux sets TERMUX_VERSION; alternatively its prefix is always /data/data/com.termux
+    if os.environ.get("TERMUX_VERSION"):
+        return True
+    return Path("/data/data/com.termux").exists()
+
+
 def list_removable_drives() -> list[dict]:
     """
     Return a list of removable block devices (USB drives, etc.).
@@ -44,7 +52,7 @@ def list_removable_drives() -> list[dict]:
     Each entry is a dict::
 
         {
-            "device": "/dev/sdb",        # Linux  – or  "D:\\" on Windows
+            "device": "/dev/sdb",        # Linux/Android – or "D:\\" on Windows
             "size":   "16000000000",     # bytes as string
             "model":  "SanDisk Ultra",
             "transport": "usb",
@@ -54,6 +62,8 @@ def list_removable_drives() -> list[dict]:
     """
     if sys.platform == "win32":
         return _list_removable_drives_windows()
+    if _is_termux():
+        return _list_removable_drives_android()
     return _list_removable_drives_linux()
 
 
@@ -145,6 +155,67 @@ def _list_removable_drives_windows() -> list[dict]:
                 "device":    device,
                 "size":      str(item.get("Size") or "?"),
                 "model":     (item.get("Model") or "").strip(),
+                "transport": "usb",
+            }
+        )
+    return drives
+
+
+def _list_removable_drives_android() -> list[dict]:
+    """
+    Android/Termux implementation – walks ``/sys/block`` sysfs entries.
+
+    On Android the kernel exposes block devices under ``/sys/block``.
+    A device is considered removable when its ``removable`` sysfs attribute
+    is ``1``.  OTG USB storage typically appears as ``sd*``; the size is read
+    from the ``size`` attribute (512-byte sectors).
+
+    Disk partitioning operations (prepare/add/remove) require root access
+    and the ``parted`` / ``mkfs.fat`` packages from Termux.  The list is
+    still useful for ISO inspection on an already-prepared USB drive.
+    """
+    sys_block = Path("/sys/block")
+    if not sys_block.exists():
+        return []
+
+    drives: list[dict] = []
+    for dev_dir in sorted(sys_block.iterdir()):
+        name = dev_dir.name
+        # Only consider sd* and mmcblk* type devices; skip loop, ram, zram, …
+        if not (name.startswith("sd") or name.startswith("mmcblk")):
+            continue
+
+        removable_file = dev_dir / "removable"
+        try:
+            removable = removable_file.read_text().strip()
+        except OSError:
+            continue
+        if removable != "1":
+            continue
+
+        # Read size (in 512-byte sectors)
+        size_bytes: str = "?"
+        size_file = dev_dir / "size"
+        try:
+            sectors = int(size_file.read_text().strip())
+            size_bytes = str(sectors * 512)
+        except (OSError, ValueError):
+            pass
+
+        # Read model (may not exist for all devices)
+        model = ""
+        for model_path in (dev_dir / "device" / "model", dev_dir / "device" / "name"):
+            try:
+                model = model_path.read_text().strip()
+                break
+            except OSError:
+                continue
+
+        drives.append(
+            {
+                "device":    f"/dev/{name}",
+                "size":      size_bytes,
+                "model":     model,
                 "transport": "usb",
             }
         )
