@@ -67,6 +67,9 @@ class _Handler(BaseHTTPRequestHandler):
             # os.geteuid() is Unix-only; on Windows treat as non-root
             is_root = (os.geteuid() == 0) if hasattr(os, "geteuid") else False
             self._json({"root": is_root})
+        elif path == "/api/platform":
+            import sys as _sys
+            self._json({"platform": _sys.platform, "windows": _sys.platform == "win32"})
         elif path == "/api/info":
             params = parse_qs(parsed.query)
             iso_path = unquote(params.get("path", [""])[0])
