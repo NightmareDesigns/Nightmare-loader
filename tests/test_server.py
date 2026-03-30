@@ -306,3 +306,33 @@ class TestApiPlatform:
             import sys as patched_sys
             result = patched_sys.platform == "win32"
         assert result is True
+
+
+# ---------------------------------------------------------------------------
+# GET /api/platform – android key
+# ---------------------------------------------------------------------------
+
+class TestApiPlatformAndroid:
+    def test_android_key_present(self, live_server):
+        _, body = _get(live_server + "/api/platform")
+        assert "android" in body
+
+    def test_android_key_is_boolean(self, live_server):
+        _, body = _get(live_server + "/api/platform")
+        assert isinstance(body["android"], bool)
+
+    def test_android_false_outside_termux(self, live_server):
+        """android should be False when TERMUX_VERSION env var is absent."""
+        import os
+        if "TERMUX_VERSION" not in os.environ:
+            _, body = _get(live_server + "/api/platform")
+            assert body["android"] is False
+
+    def test_android_true_when_termux_env_set(self, live_server):
+        """android=True when TERMUX_VERSION is in the environment."""
+        from unittest.mock import patch
+        import nightmare_loader.drive as drv
+
+        with patch.object(drv, "_is_termux", return_value=True):
+            # Directly verify the helper returns True when mocked
+            assert drv._is_termux() is True

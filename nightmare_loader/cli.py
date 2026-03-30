@@ -420,7 +420,7 @@ def web_ui(port: int, no_browser: bool) -> None:
 
 @cli.command("install-launcher")
 @click.option("--desktop", is_flag=True, default=False,
-              help="Also place a shortcut on ~/Desktop (Linux) or Desktop (Windows).")
+              help="Also place a shortcut on ~/Desktop (Linux/Windows). Ignored on Android.")
 def install_launcher(desktop: bool) -> None:
     """
     Install a desktop launcher so Nightmare Loader can be started with a
@@ -428,15 +428,24 @@ def install_launcher(desktop: bool) -> None:
 
     Linux/macOS: creates a .desktop file in ~/.local/share/applications/.
     Windows: creates a .lnk shortcut in the Start Menu Programs folder.
+    Android/Termux: creates a Termux:Widget shortcut script in
+    ~/.shortcuts/ so the app can be launched from the home screen widget.
 
     The launcher (nightmare-loader-gui) automatically requests admin
     privileges when needed (pkexec/sudo on Linux, UAC on Windows).
+    On Android, root access via 'tsu' is used when available.
     """
+    from .drive import _is_termux
     from .launcher import install_desktop_launcher
     paths = install_desktop_launcher(install_to_desktop=desktop)
     for p in paths:
         click.echo(f"Installed: {p}")
-    if sys.platform == "win32":
+    if _is_termux():
+        click.echo(
+            "\nDone. Nightmare Loader shortcut installed for Termux:Widget.\n"
+            "Add the Termux:Widget to your home screen and tap the script to launch."
+        )
+    elif sys.platform == "win32":
         click.echo(
             "\nDone. Nightmare Loader is now in your Start Menu.\n"
             "It will request administrator access via UAC when launched."
@@ -448,7 +457,7 @@ def install_launcher(desktop: bool) -> None:
     if desktop:
         if sys.platform == "win32":
             click.echo("A shortcut was also placed on your Desktop.")
-        else:
+        elif not _is_termux():
             click.echo(
                 "A shortcut was also placed on your Desktop. "
                 "Right-click → Allow Launching if your file manager asks."
@@ -473,10 +482,25 @@ def gui_main() -> None:
     * **Windows** – if not already running as administrator, re-launches
       itself with the ``runas`` verb via ``ShellExecuteW`` (triggers UAC
       prompt) and exits the current process.
+    * **Android/Termux** – elevation is skipped (root is optional on Termux);
+      the server starts and the URL is printed so the user can open it in
+      any browser on the device.
 
     Once running with sufficient privileges, the web UI server is started
-    and a browser window is opened automatically.
+    and a browser window is opened automatically (except on Android/Termux
+    where ``webbrowser`` is unreliable – the URL is printed instead).
     """
+    from .drive import _is_termux
+    if _is_termux():
+        # On Termux there is no graphical elevation and no reliable webbrowser.
+        # Just start the server and tell the user which URL to open.
+        click.echo(
+            "Nightmare Loader running on Android/Termux.\n"
+            f"Open this URL in your browser: http://127.0.0.1:{DEFAULT_PORT}/"
+        )
+        start_server(open_browser=False)
+        return
+
     if sys.platform == "win32":
         _ensure_admin_windows()
     elif os.geteuid() != 0:
