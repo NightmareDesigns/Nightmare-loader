@@ -36,6 +36,7 @@ import click
 from . import __version__
 from .drive import (
     DriveError,
+    build_bootable_image,
     get_drive_info,
     list_removable_drives,
     mount,
@@ -462,6 +463,83 @@ def install_launcher(desktop: bool) -> None:
                 "A shortcut was also placed on your Desktop. "
                 "Right-click → Allow Launching if your file manager asks."
             )
+
+
+# ---------------------------------------------------------------------------
+# nightmare-loader build-image
+# ---------------------------------------------------------------------------
+
+@cli.command("build-image")
+@click.option(
+    "--output", "-o",
+    default="dist/nightmare-loader.img",
+    show_default=True,
+    help="Destination path for the .img file.",
+)
+@click.option(
+    "--size", "-s",
+    default=256,
+    show_default=True,
+    type=int,
+    help="Image size in MiB (must be ≥ 64 MiB).",
+)
+@click.option(
+    "--label",
+    default="NIGHTMARE",
+    show_default=True,
+    help="FAT32 volume label written into the image (max 11 chars).",
+)
+def build_image(output: str, size: int, label: str) -> None:
+    """
+    Build a bootable disk image (.img) ready to flash with Rufus or dd.
+
+    \b
+    The image contains GRUB2 (BIOS + UEFI), the Nightmare Loader theme,
+    and an auto-discovery grub.cfg that scans /isos/*.iso at boot time.
+    No additional software is needed on the host after flashing.
+
+    \b
+    Workflow:
+      1. Build the image (Linux, requires root):
+             sudo nightmare-loader build-image
+      2. Flash to USB with Rufus on Windows (choose "DD Image" write mode)
+         or with dd on Linux:
+             sudo dd if=dist/nightmare-loader.img of=/dev/sdX bs=4M status=progress
+      3. Copy your .iso files into the isos/ folder on the USB drive.
+      4. Boot from the USB drive — GRUB finds your ISOs automatically.
+
+    \b
+    Requirements (Debian/Ubuntu):
+      sudo apt install grub2-common grub-pc-bin grub-efi-amd64-bin parted dosfstools
+    """
+    _require_root()
+
+    if size < 64:
+        click.echo("Error: --size must be at least 64 MiB.", err=True)
+        sys.exit(1)
+
+    click.echo(f"Building {size} MiB bootable image → {output}")
+    click.echo("This may take a minute…")
+
+    try:
+        img = build_bootable_image(
+            output_path=output,
+            size_mib=size,
+            label=label,
+        )
+    except DriveError as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+    size_mb = img.stat().st_size / 1_048_576
+    click.echo(f"\nDone!  {img}  ({size_mb:.0f} MiB)")
+    click.echo("")
+    click.echo("Next steps:")
+    click.echo("  1. Flash to USB with Rufus (Windows) — choose 'DD Image' write mode")
+    click.echo("     or with dd (Linux):")
+    click.echo(f"       sudo dd if={img} of=/dev/sdX bs=4M status=progress")
+    click.echo("  2. Copy your .iso files into the  isos/  folder on the USB drive.")
+    click.echo("  3. Boot from the USB drive — GRUB finds your ISOs automatically.")
 
 
 # ---------------------------------------------------------------------------

@@ -25,8 +25,17 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Optional
+
+from .grub import (
+    install_grub_bios,
+    install_grub_efi,
+    install_grub_theme,
+    save_state,
+    write_autodiscovery_grub_cfg,
+)
 
 
 class DriveError(Exception):
@@ -363,3 +372,145 @@ def _check_not_mounted(device: str) -> None:
             f"{device} appears to be mounted. Please unmount it first:\n"
             f"  sudo umount {device}*"
         )
+
+
+# ---------------------------------------------------------------------------
+# Disk image builder (for use with Rufus / dd)
+# ---------------------------------------------------------------------------
+
+def build_bootable_image(
+    output_path: str | Path,
+    size_mib: int = 256,
+    label: str = "NIGHTMARE",
+) -> Path:
+    """
+    Build a bootable disk image (``.img``) that can be written to a USB
+    flash drive with Rufus (Windows), ``dd`` (Linux/macOS), or similar tools.
+
+    The image contains:
+
+    * MBR partition table with a single bootable FAT32 partition.
+    * GRUB2 for legacy BIOS (``i386-pc`` target).
+    * GRUB2 for UEFI (``x86_64-efi`` target, ``EFI/BOOT/BOOTX64.EFI``).
+    * Nightmare Loader GRUB theme.
+    * Auto-discovery ``grub.cfg`` — GRUB scans ``/isos/*.iso`` at boot time
+      and creates a menu entry for each ISO it recognises.  No host-side
+      software is needed after flashing.
+    * Empty ``/isos`` directory ready for ISO files.
+    * ``.nightmare-loader.json`` state file.
+
+    **Typical workflow**
+
+    1. Build the image (Linux host, requires root)::
+
+           sudo nightmare-loader build-image
+
+    2. Write the image to a USB drive with Rufus on Windows (choose
+       *DD image* write mode) or ``dd`` on Linux::
+
+           sudo dd if=dist/nightmare-loader.img of=/dev/sdX bs=4M status=progress
+
+    3. Copy your ``.iso`` files into the ``isos/`` folder on the drive.
+
+    4. Boot from the USB drive — GRUB finds the ISOs automatically.
+
+    Parameters
+    ----------
+    output_path:
+        Destination path for the ``.img`` file.
+    size_mib:
+        Image size in mebibytes.  Must be large enough to hold the GRUB
+        files (≥ 64 MiB).  Default: 256 MiB.
+    label:
+        FAT32 volume label, max 11 characters (default: ``NIGHTMARE``).
+
+    Returns
+    -------
+    Path
+        Path to the written image file.
+
+    Raises
+    ------
+    DriveError
+        If the platform is not Linux, required tools are missing, or the
+        build fails at any step.
+    """
+    if sys.platform == "win32":
+        raise DriveError(
+            "build_bootable_image is not supported on Windows. "
+            "Run this command on a Linux machine or inside WSL."
+        )
+
+    for tool in ("dd", "parted", "losetup", "mkfs.fat", "grub-install",
+                 "mount", "umount"):
+        if not shutil.which(tool):
+            raise DriveError(
+                f"Required tool '{tool}' not found. Install the following "
+                "packages and try again:\n"
+                "  sudo apt install grub2-common grub-pc-bin "
+                "grub-efi-amd64-bin parted dosfstools"
+            )
+
+    label = label[:11].upper()
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # 1. Create a zero-filled raw image file.
+    _run(["dd", "if=/dev/zero", f"of={output_path}",
+          "bs=1M", f"count={size_mib}"])
+
+    # 2. Partition: MBR table + single bootable FAT32 partition.
+    _run(["parted", "-s", str(output_path), "mklabel", "msdos"])
+    _run(["parted", "-s", str(output_path),
+          "mkpart", "primary", "fat32", "1MiB", "100%"])
+    _run(["parted", "-s", str(output_path), "set", "1", "boot", "on"])
+
+    # 3. Attach image as a loop device (--partscan exposes partitions).
+    result = subprocess.run(
+        ["losetup", "--find", "--show", "--partscan", str(output_path)],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise DriveError(
+            f"losetup failed: {result.stderr.strip()}"
+        )
+    loop_dev = result.stdout.strip()
+
+    try:
+        # 4. Format the partition as FAT32.
+        _run(["mkfs.fat", "-F32", "-n", label, f"{loop_dev}p1"])
+
+        with tempfile.TemporaryDirectory(prefix="nightmare-img-") as tmp:
+            # 5. Mount the FAT32 partition.
+            _run(["mount", f"{loop_dev}p1", tmp])
+            mp = Path(tmp)
+            try:
+                # 6. Create the /isos directory.
+                (mp / "isos").mkdir()
+
+                # 7. Install GRUB for legacy BIOS.
+                install_grub_bios(loop_dev, mp)
+
+                # 8. Install GRUB for UEFI (removable fallback path).
+                install_grub_efi(mp, removable=True)
+
+                # 9. Install the Nightmare Loader GRUB theme.
+                install_grub_theme(mp)
+
+                # 10. Write auto-discovery grub.cfg.
+                write_autodiscovery_grub_cfg(mp, label=label)
+
+                # 11. Write initial state file.
+                save_state(mp, {
+                    "entries": [],
+                    "label": label,
+                    "mode": "autodiscovery",
+                })
+            finally:
+                _run(["umount", tmp])
+    finally:
+        subprocess.run(["losetup", "-d", loop_dev],
+                       capture_output=True, text=True)
+
+    return output_path

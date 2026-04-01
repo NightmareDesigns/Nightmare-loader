@@ -5,6 +5,8 @@ Supports:
   - Legacy BIOS (i386-pc target)
   - UEFI  (x86_64-efi target)
   - Config generation with loopback ISO entries
+  - Auto-discovery config that scans /isos/*.iso at boot time (no software
+    needed on the host after flashing with Rufus or dd)
 """
 
 from __future__ import annotations
@@ -240,6 +242,183 @@ def write_grub_cfg(mount_point: str | Path, entries: list[dict],
     cfg_path = mount_point / GRUB_CFG
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
     cfg_path.write_text(generate_grub_cfg(entries, label=label))
+    return cfg_path
+
+
+def generate_autodiscovery_grub_cfg(label: str = "NIGHTMARE") -> str:
+    """
+    Generate a grub.cfg that automatically discovers ISO files at boot time.
+
+    Unlike :func:`generate_grub_cfg`, this config requires **no host-side
+    software** after the image has been written to a drive (e.g. via Rufus or
+    ``dd``).  At boot, GRUB scans ``/isos/*.iso`` on the drive and creates a
+    menu entry for each file it recognises.
+
+    Supported distros (detected by probing paths inside each ISO):
+    - Ubuntu / Linux Mint / Ubuntu flavours (Casper live)
+    - Linux Mint with compressed initrd (casper/initrd.lz)
+    - Debian Live / Kali Linux (live/vmlinuz)
+    - Arch Linux (arch/boot/x86_64/vmlinuz-linux)
+    - Manjaro (manjaro/boot/vmlinuz-x86_64)
+    - Fedora / CentOS / RHEL (isolinux/vmlinuz)
+    - openSUSE (boot/x86_64/loader/linux)
+    - Windows PE / Setup (sources/boot.wim via wimboot)
+
+    Parameters
+    ----------
+    label:
+        FAT volume label of the drive.  Used by the ``search`` command so
+        GRUB can locate the drive regardless of which port it is plugged into.
+        Must match the label used when formatting (default ``NIGHTMARE``).
+
+    Returns
+    -------
+    str
+        Full grub.cfg file content.
+    """
+    return (
+        "# Nightmare Loader – GRUB2 multi-ISO boot menu (auto-discovery mode)\n"
+        "# Drop ISO files into the /isos folder and they will appear here automatically.\n"
+        "# Auto-generated – do not edit by hand.\n"
+        "\n"
+        "set default=0\n"
+        "set timeout=10\n"
+        "\n"
+        f"search --no-floppy --label --set=root {label}\n"
+        "\n"
+        "insmod part_gpt\n"
+        "insmod part_msdos\n"
+        "insmod fat\n"
+        "insmod iso9660\n"
+        "insmod loopback\n"
+        "insmod linux\n"
+        "insmod all_video\n"
+        "insmod gfxterm\n"
+        "insmod regexp\n"
+        "\n"
+        "if loadfont ($root)/boot/grub/fonts/unicode.pf2; then\n"
+        "    set gfxmode=auto\n"
+        "    terminal_output gfxterm\n"
+        "    set theme=($root)/boot/grub/themes/nightmare/theme.txt\n"
+        "fi\n"
+        "\n"
+        "# ---------------------------------------------------------------------------\n"
+        "# Auto-discovery: scan /isos for ISO files and add a menu entry for each one.\n"
+        "#\n"
+        "# GRUB passes the ISO path as the second menuentry argument ($2) so the\n"
+        "# inner block can reference it even though it runs in a fresh scope.\n"
+        "# ---------------------------------------------------------------------------\n"
+        "\n"
+        "for isofile in ($root)/isos/*.iso ($root)/isos/*.ISO; do\n"
+        "    # Skip the glob literal if no files matched\n"
+        "    if [ ! -f \"$isofile\" ]; then\n"
+        "        continue\n"
+        "    fi\n"
+        "\n"
+        "    regexp -s isoname \"^.*/([^/]+)$\" \"$isofile\"\n"
+        "    loopback loop \"$isofile\"\n"
+        "\n"
+        "    if [ -f (loop)/casper/vmlinuz ] && [ -f (loop)/casper/initrd.lz ]; then\n"
+        "        # Linux Mint (Casper + compressed initrd)\n"
+        "        menuentry \"$isoname\" \"$isofile\" {\n"
+        "            set isofile=\"$2\"\n"
+        "            loopback loop \"$isofile\"\n"
+        "            linux  (loop)/casper/vmlinuz boot=casper iso-scan/filename=\"$isofile\" quiet splash ---\n"
+        "            initrd (loop)/casper/initrd.lz\n"
+        "        }\n"
+        "    elif [ -f (loop)/casper/vmlinuz ]; then\n"
+        "        # Ubuntu and Ubuntu-based distros (Casper live)\n"
+        "        menuentry \"$isoname\" \"$isofile\" {\n"
+        "            set isofile=\"$2\"\n"
+        "            loopback loop \"$isofile\"\n"
+        "            linux  (loop)/casper/vmlinuz boot=casper iso-scan/filename=\"$isofile\" quiet splash ---\n"
+        "            initrd (loop)/casper/initrd\n"
+        "        }\n"
+        "    elif [ -f (loop)/live/vmlinuz ]; then\n"
+        "        # Debian Live / Kali Linux\n"
+        "        menuentry \"$isoname\" \"$isofile\" {\n"
+        "            set isofile=\"$2\"\n"
+        "            loopback loop \"$isofile\"\n"
+        "            linux  (loop)/live/vmlinuz boot=live fromiso=\"$isofile\" quiet splash\n"
+        "            initrd (loop)/live/initrd.img\n"
+        "        }\n"
+        "    elif [ -f (loop)/arch/boot/x86_64/vmlinuz-linux ]; then\n"
+        "        # Arch Linux\n"
+        "        menuentry \"$isoname\" \"$isofile\" {\n"
+        "            set isofile=\"$2\"\n"
+        "            loopback loop \"$isofile\"\n"
+        f"            linux  (loop)/arch/boot/x86_64/vmlinuz-linux img_dev=/dev/disk/by-label/{label} img_loop=\"$isofile\" archisodevice=/dev/loop0\n"
+        "            initrd (loop)/arch/boot/x86_64/initramfs-linux.img\n"
+        "        }\n"
+        "    elif [ -f (loop)/manjaro/boot/vmlinuz-x86_64 ]; then\n"
+        "        # Manjaro Linux\n"
+        "        menuentry \"$isoname\" \"$isofile\" {\n"
+        "            set isofile=\"$2\"\n"
+        "            loopback loop \"$isofile\"\n"
+        f"            linux  (loop)/manjaro/boot/vmlinuz-x86_64 img_dev=/dev/disk/by-label/{label} img_loop=\"$isofile\" misobasedir=manjaro quiet splash\n"
+        "            initrd (loop)/manjaro/boot/initramfs-x86_64.img\n"
+        "        }\n"
+        "    elif [ -f (loop)/isolinux/vmlinuz ]; then\n"
+        "        # Fedora / CentOS / RHEL\n"
+        "        menuentry \"$isoname\" \"$isofile\" {\n"
+        "            set isofile=\"$2\"\n"
+        "            loopback loop \"$isofile\"\n"
+        "            linux  (loop)/isolinux/vmlinuz root=live:CDLABEL= rd.live.image iso-scan/filename=\"$isofile\" quiet\n"
+        "            initrd (loop)/isolinux/initrd.img\n"
+        "        }\n"
+        "    elif [ -f (loop)/boot/x86_64/loader/linux ]; then\n"
+        "        # openSUSE\n"
+        "        menuentry \"$isoname\" \"$isofile\" {\n"
+        "            set isofile=\"$2\"\n"
+        "            loopback loop \"$isofile\"\n"
+        "            linux  (loop)/boot/x86_64/loader/linux isofrom_system=1 isofrom=\"$isofile\" quiet splash\n"
+        "            initrd (loop)/boot/x86_64/loader/initrd\n"
+        "        }\n"
+        "    elif [ -f (loop)/sources/boot.wim ]; then\n"
+        "        # Windows PE / Setup (requires /boot/grub/wimboot on the drive)\n"
+        "        menuentry \"$isoname (Windows)\" \"$isofile\" {\n"
+        "            set isofile=\"$2\"\n"
+        "            loopback loop \"$isofile\"\n"
+        "            linux16 /boot/grub/wimboot\n"
+        "            initrd16 \\\n"
+        "                newc:bootmgr:(loop)/bootmgr \\\n"
+        "                newc:bcd:(loop)/Boot/BCD \\\n"
+        "                newc:boot.sdi:(loop)/Boot/boot.sdi \\\n"
+        "                newc:boot.wim:(loop)/sources/boot.wim\n"
+        "        }\n"
+        "    fi\n"
+        "\n"
+        "    loopback --delete loop\n"
+        "done\n"
+        "\n"
+        "menuentry \"Reboot\" {\n"
+        "    reboot\n"
+        "}\n"
+        "\n"
+        "menuentry \"Power Off\" {\n"
+        "    halt\n"
+        "}\n"
+    )
+
+
+def write_autodiscovery_grub_cfg(mount_point: str | Path,
+                                 label: str = "NIGHTMARE") -> Path:
+    """
+    Write the auto-discovery grub.cfg to ``<mount_point>/boot/grub/grub.cfg``.
+
+    Parameters
+    ----------
+    mount_point:
+        Root of the mounted USB / image partition.
+    label:
+        FAT volume label of the drive.
+
+    Returns the path to the written file.
+    """
+    mount_point = Path(mount_point)
+    cfg_path = mount_point / GRUB_CFG
+    cfg_path.parent.mkdir(parents=True, exist_ok=True)
+    cfg_path.write_text(generate_autodiscovery_grub_cfg(label=label))
     return cfg_path
 
 
