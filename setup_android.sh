@@ -52,7 +52,7 @@ echo
 
 # ── Step 3: Install Nightmare Loader ────────────────────────────
 step "[3/4] Installing Nightmare Loader..."
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 
 if [ -f "$SCRIPT_DIR/pyproject.toml" ]; then
     info "Installing from local checkout: $SCRIPT_DIR"

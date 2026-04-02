@@ -98,7 +98,7 @@ echo ""
 # Install nightmare-loader Python package (for grub.cfg generation)
 # ---------------------------------------------------------------------------
 echo "[1/4] Installing nightmare-loader package..."
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 pip3 install --quiet -e "$SCRIPT_DIR"
 echo "  Done."
 echo ""
