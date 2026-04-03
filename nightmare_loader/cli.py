@@ -24,6 +24,7 @@ Usage examples::
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shlex
 import shutil
@@ -36,6 +37,7 @@ import click
 from . import __version__
 from .drive import (
     DriveError,
+    _is_termux,
     get_drive_info,
     list_removable_drives,
     mount,
@@ -62,14 +64,58 @@ from .server import DEFAULT_PORT, start_server
 # ---------------------------------------------------------------------------
 
 def _require_root() -> None:
+    """Exit with an error if not running as root."""
     if os.geteuid() != 0:
-        click.echo("Error: this command must be run as root (sudo).", err=True)
+        if _is_termux():
+            click.echo(
+                "Error: this command requires root.\n"
+                "\n"
+                "On a rooted device, install tsu and run:\n"
+                "  pkg install tsu\n"
+                "  tsu -c 'nightmare-loader ...'",
+                err=True,
+            )
+        else:
+            click.echo("Error: this command must be run as root (sudo).", err=True)
+        sys.exit(1)
+
+
+def _require_root_or_mount_point(mount_point: str | None) -> None:
+    """Require root unless a pre-mounted path is supplied.
+
+    On Android/Termux without root, the USB drive may already be mounted by
+    Android (e.g. at ``/storage/XXXX-XXXX/`` via USB OTG).  Passing
+    ``--mount-point`` lets the command use that path directly and skip the
+    ``mount``/``umount`` system calls that require root.
+    """
+    if mount_point:
+        return  # pre-mounted path supplied – no root needed
+    if os.geteuid() != 0:
+        if _is_termux():
+            click.echo(
+                "Error: this command requires root to mount the drive.\n"
+                "\n"
+                "On a rooted device:\n"
+                "  pkg install tsu\n"
+                "  tsu -c 'nightmare-loader COMMAND DEVICE'\n"
+                "\n"
+                "Without root, if Android has already mounted the drive\n"
+                "(e.g. USB OTG at /storage/XXXX-XXXX), use --mount-point:\n"
+                "  nightmare-loader COMMAND DEVICE --mount-point /storage/XXXX-XXXX",
+                err=True,
+            )
+        else:
+            click.echo(
+                "Error: this command must be run as root (sudo).\n"
+                "If the drive is already mounted, you may also use:\n"
+                "  nightmare-loader COMMAND DEVICE --mount-point /path/to/mount",
+                err=True,
+            )
         sys.exit(1)
 
 
 def _with_mount(device: str, partition: str):
     """Context manager that mounts *partition* and yields the mount-point path."""
-    import contextlib
 
     @contextlib.contextmanager
     def _ctx():
@@ -84,6 +130,26 @@ def _with_mount(device: str, partition: str):
                     pass
 
     return _ctx()
+
+
+@contextlib.contextmanager
+def _open_drive(device: str, mount_point: str | None):
+    """Yield the filesystem root for *device*.
+
+    If *mount_point* is given the path is used directly (no mounting or
+    unmounting occurs).  Otherwise the first partition of *device* is
+    mounted in a temporary directory.
+    """
+    if mount_point:
+        mp = Path(mount_point)
+        if not mp.is_dir():
+            click.echo(f"Error: --mount-point '{mount_point}' is not a directory.", err=True)
+            sys.exit(1)
+        yield mp
+    else:
+        partition = _partition_name(device, 1)
+        with _with_mount(device, partition) as mp:
+            yield mp
 
 
 # ---------------------------------------------------------------------------
@@ -185,7 +251,14 @@ def prepare(device: str, layout: str, label: str, yes: bool) -> None:
             save_state(mp, {"entries": [], "label": label})
 
     click.echo(f"Done. Drive {device} is ready. Add ISOs with:")
-    click.echo(f"  sudo nightmare-loader add {device} <path-to.iso>")
+    if _is_termux():
+        click.echo(f"  tsu -c 'nightmare-loader add {device} <path-to.iso>'")
+        click.echo(
+            "\nWithout root, if Android mounts the drive at /storage/XXXX-XXXX, use:\n"
+            f"  nightmare-loader add {device} <path-to.iso> --mount-point /storage/XXXX-XXXX"
+        )
+    else:
+        click.echo(f"  sudo nightmare-loader add {device} <path-to.iso>")
 
 
 # ---------------------------------------------------------------------------
@@ -199,14 +272,29 @@ def prepare(device: str, layout: str, label: str, yes: bool) -> None:
               help="Custom menu label for this entry (default: auto-detected).")
 @click.option("--copy/--no-copy", default=True, show_default=True,
               help="Copy the ISO to the drive (--no-copy to register an already-copied ISO).")
-def add_iso(device: str, iso_path: str, label: str | None, copy: bool) -> None:
+@click.option(
+    "--mount-point", "-m", default=None, metavar="PATH",
+    help=(
+        "Use PATH as the already-mounted drive root instead of mounting DEVICE "
+        "(useful on Android/Termux without root when the drive is mounted by Android, "
+        "e.g. /storage/XXXX-XXXX)."
+    ),
+)
+def add_iso(device: str, iso_path: str, label: str | None, copy: bool,
+            mount_point: str | None) -> None:
     """
     Add ISO_PATH to DEVICE.
 
     The ISO is copied into the /isos directory on the drive and a new GRUB
     menu entry is appended.
+
+    \b
+    On Android/Termux without root: if Android has mounted the USB drive
+    (e.g. at /storage/XXXX-XXXX), pass --mount-point to skip the root-required
+    mount step:
+      nightmare-loader add /dev/sda ubuntu.iso --mount-point /storage/XXXX-XXXX
     """
-    _require_root()
+    _require_root_or_mount_point(mount_point)
 
     iso_path_obj = Path(iso_path)
     click.echo(f"Reading ISO metadata: {iso_path_obj.name}…")
@@ -218,8 +306,7 @@ def add_iso(device: str, iso_path: str, label: str | None, copy: bool) -> None:
 
     menu_label = label or f"{meta['distro_label']} ({meta['filename']})"
 
-    partition = _partition_name(device, 1)
-    with _with_mount(device, partition) as mp:
+    with _open_drive(device, mount_point) as mp:
         state = load_state(mp)
         iso_dest_dir = mp / ISO_DIR
         iso_dest_dir.mkdir(parents=True, exist_ok=True)
@@ -261,17 +348,25 @@ def add_iso(device: str, iso_path: str, label: str | None, copy: bool) -> None:
 @click.argument("iso_name")
 @click.option("--keep-file", is_flag=True, default=False,
               help="Do not delete the ISO file, just remove the menu entry.")
-def remove_iso(device: str, iso_name: str, keep_file: bool) -> None:
+@click.option(
+    "--mount-point", "-m", default=None, metavar="PATH",
+    help="Use PATH as the already-mounted drive root instead of mounting DEVICE.",
+)
+def remove_iso(device: str, iso_name: str, keep_file: bool,
+               mount_point: str | None) -> None:
     """
     Remove ISO_NAME from DEVICE.
 
     ISO_NAME is the filename of the ISO (e.g. ubuntu-22.04.iso).
     Use 'nightmare-loader list DEVICE' to see registered ISOs.
-    """
-    _require_root()
 
-    partition = _partition_name(device, 1)
-    with _with_mount(device, partition) as mp:
+    \b
+    On Android/Termux without root, pass --mount-point PATH if the drive is
+    already mounted by Android (e.g. /storage/XXXX-XXXX).
+    """
+    _require_root_or_mount_point(mount_point)
+
+    with _open_drive(device, mount_point) as mp:
         state = load_state(mp)
         before = len(state["entries"])
         state["entries"] = [e for e in state["entries"] if e["filename"] != iso_name]
@@ -299,10 +394,22 @@ def remove_iso(device: str, iso_name: str, keep_file: bool) -> None:
 
 @cli.command("list")
 @click.argument("device")
-def list_isos(device: str) -> None:
-    """List all ISOs registered on DEVICE."""
-    partition = _partition_name(device, 1)
-    with _with_mount(device, partition) as mp:
+@click.option(
+    "--mount-point", "-m", default=None, metavar="PATH",
+    help=(
+        "Use PATH as the already-mounted drive root instead of mounting DEVICE "
+        "(no root required when the drive is already mounted, e.g. on Android/Termux)."
+    ),
+)
+def list_isos(device: str, mount_point: str | None) -> None:
+    """List all ISOs registered on DEVICE.
+
+    \b
+    On Android/Termux without root, pass --mount-point PATH if the drive is
+    already mounted by Android (e.g. /storage/XXXX-XXXX).
+    """
+    _require_root_or_mount_point(mount_point)
+    with _open_drive(device, mount_point) as mp:
         state = load_state(mp)
         entries = state.get("entries", [])
 
@@ -327,17 +434,24 @@ def list_isos(device: str) -> None:
 
 @cli.command("update")
 @click.argument("device")
-def update(device: str) -> None:
+@click.option(
+    "--mount-point", "-m", default=None, metavar="PATH",
+    help="Use PATH as the already-mounted drive root instead of mounting DEVICE.",
+)
+def update(device: str, mount_point: str | None) -> None:
     """
     Re-generate grub.cfg on DEVICE from the stored state.
 
     Useful if grub.cfg was accidentally deleted or if you upgraded
     nightmare-loader and want to apply new default settings.
-    """
-    _require_root()
 
-    partition = _partition_name(device, 1)
-    with _with_mount(device, partition) as mp:
+    \b
+    On Android/Termux without root, pass --mount-point PATH if the drive is
+    already mounted by Android (e.g. /storage/XXXX-XXXX).
+    """
+    _require_root_or_mount_point(mount_point)
+
+    with _open_drive(device, mount_point) as mp:
         state = load_state(mp)
         drive_label = state.get("label", "NIGHTMARE")
         cfg_path = write_grub_cfg(mp, state["entries"], label=drive_label)
