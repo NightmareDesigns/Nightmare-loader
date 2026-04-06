@@ -29,11 +29,10 @@ import shlex
 import shutil
 import sys
 import tempfile
+import urllib.request
 from pathlib import Path
 
 import click
-
-import urllib.request
 
 from . import __version__
 from .drive import (
@@ -67,6 +66,22 @@ def _require_root() -> None:
     if os.geteuid() != 0:
         click.echo("Error: this command must be run as root (sudo).", err=True)
         sys.exit(1)
+
+
+def _download_reporthook(block_num: int, block_size: int, total_size: int) -> None:
+    """urllib reporthook that prints a simple inline progress line."""
+    downloaded = block_num * block_size
+    if total_size > 0:
+        pct = min(downloaded * 100 // total_size, 100)
+        mb = downloaded / 1_048_576
+        total_mb = total_size / 1_048_576
+        click.echo(
+            f"\r       {pct:3d}%  {mb:.1f} / {total_mb:.1f} MB",
+            nl=False,
+        )
+    else:
+        mb = downloaded / 1_048_576
+        click.echo(f"\r       {mb:.1f} MB downloaded", nl=False)
 
 
 def _with_mount(device: str, partition: str):
