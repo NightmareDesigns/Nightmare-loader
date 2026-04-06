@@ -385,7 +385,7 @@ class TestKitList:
         result = runner.invoke(cli, ["kit"])
         assert result.exit_code == 0
         assert "Manual" in result.output
-        assert "microsoft.com" in result.output
+        assert "www.microsoft.com/en-us/software-download/windows11" in result.output
 
     def test_category_filter(self):
         runner = CliRunner()
