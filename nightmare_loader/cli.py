@@ -131,6 +131,41 @@ def _download_reporthook(block_num: int, block_size: int, total_size: int) -> No
         click.echo(f"\r       {mb:.1f} MB downloaded", nl=False)
 
 
+def _download_iso_url(key: str, cfg: dict, out_dir: Path) -> bool:
+    """
+    Download the ISO for *key* into *out_dir*.
+
+    Returns ``True`` on success (or if the file already existed), ``False``
+    on failure.  Progress and error messages are printed to stdout/stderr.
+    """
+    url = cfg["download_url"]
+    filename = url.split("/")[-1]
+    dest = out_dir / filename
+
+    if dest.exists():
+        click.echo(f"[{key}] Already exists, skipping: {dest}")
+        return True
+
+    size_mb = cfg.get("download_size_mb")
+    size_hint = f" (~{size_mb} MB)" if isinstance(size_mb, int) else ""
+    click.echo(f"[{key}] Downloading {cfg['label']}{size_hint}…")
+    click.echo(f"       {url}")
+    click.echo(f"       → {dest}")
+
+    tmp_dest = dest.with_suffix(dest.suffix + ".part")
+    try:
+        urllib.request.urlretrieve(url, str(tmp_dest), reporthook=_download_reporthook)
+        click.echo()  # newline after progress
+        tmp_dest.rename(dest)
+        click.echo(f"       ✓ Saved to {dest}\n")
+        return True
+    except Exception as exc:
+        click.echo(f"\n       ✗ Failed: {exc}\n", err=True)
+        if tmp_dest.exists():
+            tmp_dest.unlink()
+        return False
+
+
 def _with_mount(device: str, partition: str):
     """Context manager that mounts *partition* and yields the mount-point path."""
 
@@ -615,32 +650,14 @@ def download_iso(distro: str, out: str, download_all: bool, list_only: bool) -> 
     out_dir = Path(out).expanduser().resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    failed: list[str] = []
     for key in keys_to_get:
-        cfg = downloadable[key]
-        url = cfg["download_url"]
-        filename = url.split("/")[-1]
-        dest = out_dir / filename
+        if not _download_iso_url(key, downloadable[key], out_dir):
+            failed.append(key)
 
-        if dest.exists():
-            click.echo(f"[{key}] Already exists, skipping: {dest}")
-            continue
-
-        size_mb = cfg.get("download_size_mb")
-        size_hint = f" (~{size_mb} MB)" if isinstance(size_mb, int) else ""
-        click.echo(f"[{key}] Downloading {cfg['label']}{size_hint}…")
-        click.echo(f"       {url}")
-        click.echo(f"       → {dest}")
-
-        tmp_dest = dest.with_suffix(dest.suffix + ".part")
-        try:
-            urllib.request.urlretrieve(url, str(tmp_dest), reporthook=_download_reporthook)
-            click.echo()  # newline after progress
-            tmp_dest.rename(dest)
-            click.echo(f"       ✓ Saved to {dest}\n")
-        except Exception as exc:
-            click.echo(f"\n       ✗ Failed: {exc}\n", err=True)
-            if tmp_dest.exists():
-                tmp_dest.unlink()
+    if failed:
+        click.echo(f"Error: {len(failed)} download(s) failed: {', '.join(failed)}", err=True)
+        sys.exit(1)
 
 
 # ---------------------------------------------------------------------------
@@ -687,11 +704,13 @@ def kit(out: str, do_download: bool, category: str) -> None:
       nightmare-loader kit --download -c repair    (download repair tools only)
 
     \b
-    NOTE: Windows ISOs (win11-repair, win10-repair) and Hiren's BootCD PE
-    cannot be downloaded automatically.  Download them manually and add
-    with:  nightmare-loader add /dev/sdX Win11_*.iso --label "win11-repair"
+    NOTE: Windows ISOs and Hiren's BootCD PE cannot be downloaded
+    automatically.  Download them manually, then add them normally, e.g.:
+      nightmare-loader add /dev/sdX Win11_*.iso
+    You may use --label to change the displayed menu name, but it does not
+    change ISO detection or boot handling.
     """
-    from .distros import DISTROS, KIT_64GB, KIT_64GB_AUTO_MB
+    from .distros import DISTROS, KIT_64GB
 
     cat_filter = category.lower()
     rows = [
@@ -770,28 +789,16 @@ def kit(out: str, do_download: bool, category: str) -> None:
         click.echo()
         out_dir = Path(out).expanduser().resolve()
         out_dir.mkdir(parents=True, exist_ok=True)
+        failed: list[str] = []
         for key in downloadable_keys:
-            cfg = DISTROS[key]
-            url = cfg["download_url"]
-            filename = url.split("/")[-1]
-            dest = out_dir / filename
-            if dest.exists():
-                click.echo(f"[{key}] Already exists, skipping: {dest}")
-                continue
-            size_mb = cfg.get("download_size_mb", "?")
-            size_hint = f" (~{size_mb} MB)" if isinstance(size_mb, int) else ""
-            click.echo(f"[{key}] Downloading {cfg['label']}{size_hint}…")
-            click.echo(f"       {url}")
-            tmp_dest = dest.with_suffix(dest.suffix + ".part")
-            try:
-                urllib.request.urlretrieve(url, str(tmp_dest), reporthook=_download_reporthook)
-                click.echo()
-                tmp_dest.rename(dest)
-                click.echo(f"       ✓ Saved to {dest}\n")
-            except Exception as exc:
-                click.echo(f"\n       ✗ Failed: {exc}\n", err=True)
-                if tmp_dest.exists():
-                    tmp_dest.unlink()
+            if not _download_iso_url(key, DISTROS[key], out_dir):
+                failed.append(key)
+        if failed:
+            click.echo(
+                f"Error: {len(failed)} download(s) failed: {', '.join(failed)}",
+                err=True,
+            )
+            sys.exit(1)
 
 
 # ---------------------------------------------------------------------------

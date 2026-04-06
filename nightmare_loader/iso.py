@@ -136,4 +136,5 @@ def get_iso_metadata(iso_path: str | Path) -> dict:
         "kernel": config.get("kernel"),
         "initrd": config.get("initrd"),
         "cmdline": config.get("cmdline"),
+        "boot_type": config.get("boot_type", ""),
     }

@@ -442,38 +442,6 @@ DISTROS: dict[str, dict] = {
             "Download manually from https://www.hirensbootcd.org/download/"
         ),
     },
-    # ---------- Windows 11 Installation / Repair Media ----------
-    "win11-repair": {
-        "label": "Windows 11 Repair / Install",
-        "detect": [],
-        "kernel": None,
-        "initrd": None,
-        "cmdline": None,
-        "boot_type": "winpe",
-        "note": (
-            "Boot the official Windows 11 ISO and choose 'Repair your computer' "
-            "to access: Startup Repair, System Restore, System Image Recovery, "
-            "and Command Prompt (sfc /scannow, bootrec /fixboot, chkdsk, regedit). "
-            "Download the ISO from: "
-            "https://www.microsoft.com/en-us/software-download/windows11"
-        ),
-    },
-    # ---------- Windows 10 Installation / Repair Media ----------
-    "win10-repair": {
-        "label": "Windows 10 Repair / Install",
-        "detect": [],
-        "kernel": None,
-        "initrd": None,
-        "cmdline": None,
-        "boot_type": "winpe",
-        "note": (
-            "Boot the official Windows 10 ISO and choose 'Repair your computer' "
-            "to access: Startup Repair, System Restore, System Image Recovery, "
-            "and Command Prompt (sfc /scannow, bootrec /fixboot, chkdsk, regedit). "
-            "Download the ISO from: "
-            "https://www.microsoft.com/en-us/software-download/windows10"
-        ),
-    },
     # ---------- ChromeOS Flex (SysLinux/isolinux loopback boot) ----------
     "chromeos": {
         "label": "ChromeOS Flex",
@@ -494,8 +462,10 @@ DISTROS: dict[str, dict] = {
         "cmdline": None,
         "boot_type": "winpe",
         "note": (
-            "Windows ISOs use EFI chain-boot on UEFI systems. "
-            "Use win11-repair or win10-repair for the official repair media entries."
+            "Windows ISOs are detected as 'windows' and use EFI chain-boot "
+            "on UEFI systems. Boot the official Windows ISO and choose "
+            "'Repair your computer' to access the standard Windows recovery "
+            "tools (Startup Repair, System Restore, Command Prompt)."
         ),
     },
     # ---------- Rescuezilla (Ubuntu/Casper – disk imaging & Windows repair) ----------
