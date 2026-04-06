@@ -111,6 +111,40 @@ DISTROS: dict[str, dict] = {
             "quiet splash nopersistent"
         ),
     },
+    # ---------- Parrot Linux (Debian live) ----------
+    "parrot": {
+        "label": "Parrot Linux",
+        "detect": ["live/vmlinuz", "live/initrd.img", "live/filesystem.module"],
+        "kernel": "/live/vmlinuz",
+        "initrd": "/live/initrd.img",
+        "cmdline": (
+            "boot=live findiso={isofile} "
+            "quiet splash ---"
+        ),
+    },
+    # ---------- Hiren's BootCD PE (WinPE chain-boot) ----------
+    "hirens": {
+        "label": "Hiren's BootCD PE",
+        "detect": ["sources/boot.wim", "bootmgr", "HBCD_PE/PENetwork.ini"],
+        "kernel": None,  # WinPE requires a chain-boot approach
+        "initrd": None,
+        "cmdline": None,
+        "note": (
+            "Hiren's BootCD PE requires ntfs-3g and a chain-boot shim. "
+            "Use the --windows flag when adding this ISO."
+        ),
+    },
+    # ---------- ChromeOS Flex (SysLinux/isolinux loopback boot) ----------
+    "chromeos": {
+        "label": "ChromeOS Flex",
+        "detect": ["syslinux/vmlinuz", "syslinux/initrd.img", "chromeos/"],
+        "kernel": "/syslinux/vmlinuz",
+        "initrd": "/syslinux/initrd.img",
+        "cmdline": (
+            "loopback loop {isofile} root=/dev/loop0 "
+            "quiet splash"
+        ),
+    },
     # ---------- Windows PE / Windows Setup ----------
     "windows": {
         "label": "Windows",
