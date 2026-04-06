@@ -209,7 +209,78 @@ GRUB is installed twice:
 
 ---
 
-## Development
+## Android / Termux
+
+Nightmare Loader runs on Android via [Termux](https://termux.dev/) (install
+from **F-Droid** or GitHub Releases, **not** the outdated Play Store version).
+
+Run the one-shot setup script to install all dependencies:
+
+```bash
+bash setup_android.sh
+```
+
+### Without root (any Android device)
+
+These commands work on **any** Android device, no root required:
+
+| Command | Description |
+|---------|-------------|
+| `nightmare-loader info my.iso` | Inspect an ISO file |
+| `nightmare-loader drives` | Detect connected USB drives |
+| `nightmare-loader ui` | Start the web UI (open the printed URL in your browser) |
+
+**Managing ISOs on a drive that Android has already mounted** (USB OTG):
+
+When Android mounts a USB drive via OTG it becomes accessible at a path like
+`/storage/XXXX-XXXX`.  Pass `--mount-point` to use that path directly — no
+root needed:
+
+```bash
+# List ISOs on a drive mounted by Android at /storage/ABCD-1234
+nightmare-loader list   /dev/sda --mount-point /storage/ABCD-1234
+
+# Add an ISO
+nightmare-loader add    /dev/sda ~/Downloads/ubuntu.iso --mount-point /storage/ABCD-1234
+
+# Remove an ISO
+nightmare-loader remove /dev/sda ubuntu.iso --mount-point /storage/ABCD-1234
+
+# Re-generate grub.cfg
+nightmare-loader update /dev/sda --mount-point /storage/ABCD-1234
+```
+
+> **Note**: The drive must have been prepared already (partitioned, formatted,
+> and GRUB installed).  Use a Linux PC or a rooted Android device for the
+> initial `prepare` step.
+
+### With root (rooted device)
+
+Install `tsu` (the Termux root helper) and prefix commands with `tsu -c`:
+
+```bash
+pkg install tsu
+
+# Prepare a drive (wipes data!)
+tsu -c 'nightmare-loader prepare /dev/sda'
+
+# Add an ISO (tsu handles mounting automatically)
+tsu -c 'nightmare-loader add /dev/sda ubuntu.iso'
+```
+
+### Termux:Widget home-screen shortcut
+
+Install **Termux:Widget** from F-Droid, then run:
+
+```bash
+nightmare-loader install-launcher
+```
+
+Add the Termux:Widget to your Android home screen and tap **nightmare-loader**
+to launch the web UI.
+
+---
+
 
 ```bash
 git clone https://github.com/NightmareDesigns/Nightmare-loader.git

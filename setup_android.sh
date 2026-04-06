@@ -13,9 +13,29 @@
 #   3. Installs Nightmare Loader from the local checkout (or from PyPI)
 #   4. Creates a Termux:Widget launcher shortcut in ~/.shortcuts/
 #
-# For full USB drive partitioning support you also need:
-#   - A rooted Android device
-#   - Termux:Widget add-on (from F-Droid) to use the home-screen shortcut
+# Root vs. no-root:
+#   Nightmare Loader works in two modes on Android:
+#
+#   WITHOUT ROOT (works on any Android device):
+#     - Inspect ISO files:      nightmare-loader info my.iso
+#     - Detect USB drives:      nightmare-loader drives
+#     - Launch the web UI:      nightmare-loader ui
+#     - Manage ISOs on a drive that Android has already mounted
+#       (e.g. USB OTG at /storage/XXXX-XXXX) using --mount-point:
+#         nightmare-loader list   /dev/sda --mount-point /storage/XXXX-XXXX
+#         nightmare-loader add    /dev/sda my.iso --mount-point /storage/XXXX-XXXX
+#         nightmare-loader remove /dev/sda my.iso --mount-point /storage/XXXX-XXXX
+#         nightmare-loader update /dev/sda --mount-point /storage/XXXX-XXXX
+#
+#   WITH ROOT (rooted device + tsu):
+#     - All of the above, plus:
+#     - Partition and format a USB drive:
+#         tsu -c 'nightmare-loader prepare /dev/sda'
+#     - Mount/unmount drives automatically (no --mount-point needed):
+#         tsu -c 'nightmare-loader add /dev/sda my.iso'
+#
+#   Termux:Widget add-on (from F-Droid) lets you launch the app from the
+#   Android home screen.
 
 set -euo pipefail
 
@@ -47,6 +67,8 @@ pkg install -y python python-pip parted dosfstools util-linux
 if ! command -v tsu >/dev/null 2>&1; then
     warn "tsu (Termux root helper) not found."
     warn "Drive partitioning requires root. Install with: pkg install tsu"
+    warn "Without root you can still manage ISOs on already-mounted drives"
+    warn "using the --mount-point option."
 fi
 echo
 
@@ -73,16 +95,22 @@ echo
 echo -e "${GREEN}============================================================${RESET}"
 echo -e "${GREEN} Setup complete!${RESET}"
 echo
-echo " Basic usage:"
-echo "   nightmare-loader ui               (start web UI – open URL in browser)"
-echo "   nightmare-loader --help           (CLI help)"
-echo "   nightmare-loader install-launcher (re-create widget shortcut)"
-echo "   nightmare-loader kit              (show the full 64 GB kit plan)"
-echo "   nightmare-loader download --list  (list all downloadable distros)"
+echo " Usage (no root required):"
+echo "   nightmare-loader info my.iso         (inspect an ISO)"
+echo "   nightmare-loader drives              (list detected USB drives)"
+echo "   nightmare-loader ui                  (start web UI – open URL in browser)"
+echo "   nightmare-loader install-launcher    (re-create widget shortcut)"
 echo
-echo " For drive partitioning (requires root + OTG USB cable on Android):"
+echo " Managing ISOs without root (drive mounted by Android via USB OTG):"
+echo "   nightmare-loader list   /dev/sda --mount-point /storage/XXXX-XXXX"
+echo "   nightmare-loader add    /dev/sda my.iso --mount-point /storage/XXXX-XXXX"
+echo "   nightmare-loader remove /dev/sda my.iso --mount-point /storage/XXXX-XXXX"
+echo "   nightmare-loader update /dev/sda --mount-point /storage/XXXX-XXXX"
+echo
+echo " Root-only operations (requires rooted device + tsu):"
 echo "   pkg install tsu"
 echo "   tsu -c 'nightmare-loader prepare /dev/sda'"
+echo "   tsu -c 'nightmare-loader add /dev/sda my.iso'"
 echo
 echo " Termux:Widget shortcut:"
 echo "   Install 'Termux:Widget' from F-Droid, add the widget to"
