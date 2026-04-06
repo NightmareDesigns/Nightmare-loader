@@ -22,6 +22,91 @@ DISTROS: dict[str, dict] = {
             "boot=casper iso-scan/filename={isofile} "
             "quiet splash ---"
         ),
+        "download_url": (
+            "https://releases.ubuntu.com/24.04.1/"
+            "ubuntu-24.04.1-desktop-amd64.iso"
+        ),
+        "download_size_mb": 5800,
+    },
+    # ---------- Ubuntu 22.04 LTS ----------
+    "ubuntu-22": {
+        "label": "Ubuntu 22.04 LTS",
+        "detect": ["casper/vmlinuz", "casper/initrd"],
+        "kernel": "/casper/vmlinuz",
+        "initrd": "/casper/initrd",
+        "cmdline": (
+            "boot=casper iso-scan/filename={isofile} "
+            "quiet splash ---"
+        ),
+        "download_url": (
+            "https://releases.ubuntu.com/22.04.5/"
+            "ubuntu-22.04.5-desktop-amd64.iso"
+        ),
+        "download_size_mb": 4700,
+    },
+    # ---------- Kubuntu ----------
+    "kubuntu": {
+        "label": "Kubuntu 24.04 LTS",
+        "detect": ["casper/vmlinuz", "casper/initrd"],
+        "kernel": "/casper/vmlinuz",
+        "initrd": "/casper/initrd",
+        "cmdline": (
+            "boot=casper iso-scan/filename={isofile} "
+            "quiet splash ---"
+        ),
+        "download_url": (
+            "https://cdimage.ubuntu.com/kubuntu/releases/24.04.1/release/"
+            "kubuntu-24.04.1-desktop-amd64.iso"
+        ),
+        "download_size_mb": 3900,
+    },
+    # ---------- Xubuntu ----------
+    "xubuntu": {
+        "label": "Xubuntu 24.04 LTS",
+        "detect": ["casper/vmlinuz", "casper/initrd"],
+        "kernel": "/casper/vmlinuz",
+        "initrd": "/casper/initrd",
+        "cmdline": (
+            "boot=casper iso-scan/filename={isofile} "
+            "quiet splash ---"
+        ),
+        "download_url": (
+            "https://cdimage.ubuntu.com/xubuntu/releases/24.04/release/"
+            "xubuntu-24.04-desktop-amd64.iso"
+        ),
+        "download_size_mb": 3200,
+    },
+    # ---------- Lubuntu ----------
+    "lubuntu": {
+        "label": "Lubuntu 24.04 LTS",
+        "detect": ["casper/vmlinuz", "casper/initrd"],
+        "kernel": "/casper/vmlinuz",
+        "initrd": "/casper/initrd",
+        "cmdline": (
+            "boot=casper iso-scan/filename={isofile} "
+            "quiet splash ---"
+        ),
+        "download_url": (
+            "https://cdimage.ubuntu.com/lubuntu/releases/24.04/release/"
+            "lubuntu-24.04-desktop-amd64.iso"
+        ),
+        "download_size_mb": 2800,
+    },
+    # ---------- Ubuntu Studio ----------
+    "ubuntu-studio": {
+        "label": "Ubuntu Studio 24.04 LTS",
+        "detect": ["casper/vmlinuz", "casper/initrd"],
+        "kernel": "/casper/vmlinuz",
+        "initrd": "/casper/initrd",
+        "cmdline": (
+            "boot=casper iso-scan/filename={isofile} "
+            "quiet splash ---"
+        ),
+        "download_url": (
+            "https://cdimage.ubuntu.com/ubuntustudio/releases/24.04/release/"
+            "ubuntustudio-24.04-dvd-amd64.iso"
+        ),
+        "download_size_mb": 4800,
     },
     # ---------- Debian live ----------
     "debian": {
@@ -33,6 +118,11 @@ DISTROS: dict[str, dict] = {
             "boot=live findiso={isofile} "
             "quiet splash ---"
         ),
+        "download_url": (
+            "https://cdimage.debian.org/debian-cd/current-live/amd64/iso-hybrid/"
+            "debian-live-12.9.0-amd64-gnome.iso"
+        ),
+        "download_size_mb": 3200,
     },
     # ---------- Fedora / RHEL / CentOS (dracut/live) ----------
     "fedora": {
@@ -44,6 +134,11 @@ DISTROS: dict[str, dict] = {
             "root=live:CDLABEL=LIVE rd.live.image iso-scan/filename={isofile} "
             "quiet rhgb"
         ),
+        "download_url": (
+            "https://download.fedoraproject.org/pub/fedora/linux/releases/41/"
+            "Workstation/x86_64/iso/Fedora-Workstation-Live-x86_64-41-1.4.iso"
+        ),
+        "download_size_mb": 2200,
     },
     # ---------- Arch Linux ----------
     "arch": {
@@ -55,6 +150,11 @@ DISTROS: dict[str, dict] = {
             "img_dev=/dev/disk/by-label/NIGHTMARE img_loop={isofile} "
             "archisobasedir=arch quiet"
         ),
+        "download_url": (
+            "https://mirror.rackspace.com/archlinux/iso/latest/"
+            "archlinux-x86_64.iso"
+        ),
+        "download_size_mb": 900,
     },
     # ---------- Manjaro ----------
     "manjaro": {
@@ -66,6 +166,11 @@ DISTROS: dict[str, dict] = {
             "img_dev=/dev/disk/by-label/NIGHTMARE img_loop={isofile} "
             "manjarobasedir=manjaro quiet splash"
         ),
+        "download_url": (
+            "https://download.manjaro.org/gnome/24.2.1/"
+            "manjaro-gnome-24.2.1-241216-linux612.iso"
+        ),
+        "download_size_mb": 4200,
     },
     # ---------- Linux Mint ----------
     "mint": {
@@ -77,6 +182,27 @@ DISTROS: dict[str, dict] = {
             "boot=casper iso-scan/filename={isofile} "
             "quiet splash ---"
         ),
+        "download_url": (
+            "https://mirrors.layeronline.com/linuxmint/stable/22.1/"
+            "linuxmint-22.1-cinnamon-64bit.iso"
+        ),
+        "download_size_mb": 2800,
+    },
+    # ---------- Linux Mint MATE ----------
+    "mint-mate": {
+        "label": "Linux Mint MATE",
+        "detect": ["casper/vmlinuz", "casper/initrd.lz"],
+        "kernel": "/casper/vmlinuz",
+        "initrd": "/casper/initrd.lz",
+        "cmdline": (
+            "boot=casper iso-scan/filename={isofile} "
+            "quiet splash ---"
+        ),
+        "download_url": (
+            "https://mirrors.layeronline.com/linuxmint/stable/22.1/"
+            "linuxmint-22.1-mate-64bit.iso"
+        ),
+        "download_size_mb": 2800,
     },
     # ---------- openSUSE (live) ----------
     "opensuse": {
@@ -88,6 +214,27 @@ DISTROS: dict[str, dict] = {
             "isofrom_device=usb isofrom_system={isofile} "
             "quiet splash"
         ),
+        "download_url": (
+            "https://download.opensuse.org/distribution/leap/15.6/live/"
+            "openSUSE-Leap-15.6-GNOME-Live-x86_64.iso"
+        ),
+        "download_size_mb": 1200,
+    },
+    # ---------- openSUSE Tumbleweed ----------
+    "opensuse-tw": {
+        "label": "openSUSE Tumbleweed",
+        "detect": ["boot/x86_64/loader/linux", "boot/x86_64/loader/initrd"],
+        "kernel": "/boot/x86_64/loader/linux",
+        "initrd": "/boot/x86_64/loader/initrd",
+        "cmdline": (
+            "isofrom_device=usb isofrom_system={isofile} "
+            "quiet splash"
+        ),
+        "download_url": (
+            "https://download.opensuse.org/tumbleweed/iso/"
+            "openSUSE-Tumbleweed-GNOME-Live-x86_64-Current.iso"
+        ),
+        "download_size_mb": 1300,
     },
     # ---------- Kali Linux ----------
     "kali": {
@@ -99,6 +246,11 @@ DISTROS: dict[str, dict] = {
             "boot=live findiso={isofile} "
             "quiet splash ---"
         ),
+        "download_url": (
+            "https://cdimage.kali.org/kali-2024.4/"
+            "kali-linux-2024.4-live-amd64.iso"
+        ),
+        "download_size_mb": 4100,
     },
     # ---------- Tails ----------
     "tails": {
@@ -110,6 +262,11 @@ DISTROS: dict[str, dict] = {
             "boot=live findiso={isofile} "
             "quiet splash nopersistent"
         ),
+        "download_url": (
+            "https://mirrors.edge.kernel.org/tails/stable/tails-amd64-6.11/"
+            "tails-amd64-6.11.iso"
+        ),
+        "download_size_mb": 1300,
     },
     # ---------- Parrot Linux (Debian live) ----------
     "parrot": {
@@ -121,6 +278,153 @@ DISTROS: dict[str, dict] = {
             "boot=live findiso={isofile} "
             "quiet splash ---"
         ),
+        "download_url": (
+            "https://download.parrot.sh/parrot/iso/6.3/"
+            "Parrot-security-6.3_amd64.iso"
+        ),
+        "download_size_mb": 5100,
+    },
+    # ---------- Parrot Home Edition ----------
+    "parrot-home": {
+        "label": "Parrot Home",
+        "detect": ["live/vmlinuz", "live/initrd.img", "live/filesystem.module"],
+        "kernel": "/live/vmlinuz",
+        "initrd": "/live/initrd.img",
+        "cmdline": (
+            "boot=live findiso={isofile} "
+            "quiet splash ---"
+        ),
+        "download_url": (
+            "https://download.parrot.sh/parrot/iso/6.3/"
+            "Parrot-home-6.3_amd64.iso"
+        ),
+        "download_size_mb": 2400,
+    },
+    # ---------- BlackArch Linux ----------
+    "blackarch": {
+        "label": "BlackArch Linux",
+        "detect": ["arch/boot/x86_64/vmlinuz-linux", "arch/boot/x86_64/initramfs-linux.img"],
+        "kernel": "/arch/boot/x86_64/vmlinuz-linux",
+        "initrd": "/arch/boot/x86_64/initramfs-linux.img",
+        "cmdline": (
+            "img_dev=/dev/disk/by-label/NIGHTMARE img_loop={isofile} "
+            "archisobasedir=arch quiet"
+        ),
+        "download_url": (
+            "https://ftp.halifax.rwth-aachen.de/blackarch/iso/blackarch-linux-full-2024.01.01-x86_64.iso"
+        ),
+        "download_size_mb": 20000,
+    },
+    # ---------- Whonix (Gateway + Workstation) ----------
+    "whonix": {
+        "label": "Whonix",
+        "detect": ["live/vmlinuz", "live/initrd.img"],
+        "kernel": "/live/vmlinuz",
+        "initrd": "/live/initrd.img",
+        "cmdline": (
+            "boot=live findiso={isofile} "
+            "quiet splash ---"
+        ),
+        "download_url": (
+            "https://download.whonix.org/ova/17.2.3.7/"
+            "Whonix-XFCE-17.2.3.7.iso"
+        ),
+        "download_size_mb": 1900,
+    },
+    # ---------- Zorin OS ----------
+    "zorin": {
+        "label": "Zorin OS",
+        "detect": ["casper/vmlinuz", "casper/initrd"],
+        "kernel": "/casper/vmlinuz",
+        "initrd": "/casper/initrd",
+        "cmdline": (
+            "boot=casper iso-scan/filename={isofile} "
+            "quiet splash ---"
+        ),
+        "download_url": (
+            "https://mirror.zorin.com/zorin-os/zorin-os-17-core-64-bit.iso"
+        ),
+        "download_size_mb": 3500,
+    },
+    # ---------- Pop!_OS ----------
+    "popos": {
+        "label": "Pop!_OS",
+        "detect": ["casper/vmlinuz", "casper/initrd"],
+        "kernel": "/casper/vmlinuz",
+        "initrd": "/casper/initrd",
+        "cmdline": (
+            "boot=casper iso-scan/filename={isofile} "
+            "quiet splash ---"
+        ),
+        "download_url": (
+            "https://iso.pop-os.org/22.04/amd64/intel/42/"
+            "pop-os_22.04_amd64_intel_42.iso"
+        ),
+        "download_size_mb": 2600,
+    },
+    # ---------- elementary OS ----------
+    "elementary": {
+        "label": "elementary OS",
+        "detect": ["casper/vmlinuz", "casper/initrd"],
+        "kernel": "/casper/vmlinuz",
+        "initrd": "/casper/initrd",
+        "cmdline": (
+            "boot=casper iso-scan/filename={isofile} "
+            "quiet splash ---"
+        ),
+        "download_url": (
+            "https://sgp1.dl.elementary.io/download/MTcxNzYxMzAzMg==/"
+            "elementaryos-8.0-stable.20240501.iso"
+        ),
+        "download_size_mb": 2900,
+    },
+    # ---------- MX Linux ----------
+    "mxlinux": {
+        "label": "MX Linux",
+        "detect": ["live/vmlinuz", "live/initrd.img"],
+        "kernel": "/live/vmlinuz",
+        "initrd": "/live/initrd.img",
+        "cmdline": (
+            "boot=live findiso={isofile} "
+            "quiet splash ---"
+        ),
+        "download_url": (
+            "https://sourceforge.net/projects/mx-linux/files/Final/Xfce/"
+            "MX-23.5_x64.iso"
+        ),
+        "download_size_mb": 1900,
+    },
+    # ---------- EndeavourOS ----------
+    "endeavouros": {
+        "label": "EndeavourOS",
+        "detect": ["arch/boot/x86_64/vmlinuz-linux", "arch/boot/x86_64/initramfs-linux.img"],
+        "kernel": "/arch/boot/x86_64/vmlinuz-linux",
+        "initrd": "/arch/boot/x86_64/initramfs-linux.img",
+        "cmdline": (
+            "img_dev=/dev/disk/by-label/NIGHTMARE img_loop={isofile} "
+            "archisobasedir=arch quiet"
+        ),
+        "download_url": (
+            "https://mirror.alpix.eu/endeavouros/iso/"
+            "EndeavourOS_Gemini-2024.09.22.iso"
+        ),
+        "download_size_mb": 2800,
+    },
+    # ---------- Garuda Linux ----------
+    "garuda": {
+        "label": "Garuda Linux",
+        "detect": ["arch/boot/x86_64/vmlinuz-linux", "arch/boot/x86_64/initramfs-linux.img"],
+        "kernel": "/arch/boot/x86_64/vmlinuz-linux",
+        "initrd": "/arch/boot/x86_64/initramfs-linux.img",
+        "cmdline": (
+            "img_dev=/dev/disk/by-label/NIGHTMARE img_loop={isofile} "
+            "archisobasedir=arch quiet"
+        ),
+        "download_url": (
+            "https://iso.builds.garudalinux.org/iso/latest/garuda/dr460nized/"
+            "garuda-dr460nized-linux-zen-current.iso"
+        ),
+        "download_size_mb": 3100,
     },
     # ---------- Hiren's BootCD PE (WinPE chain-boot) ----------
     "hirens": {

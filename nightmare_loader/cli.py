@@ -33,6 +33,8 @@ from pathlib import Path
 
 import click
 
+import urllib.request
+
 from . import __version__
 from .drive import (
     DriveError,
@@ -393,6 +395,137 @@ def iso_info(iso_path: str) -> None:
     click.echo(f"Kernel  : {meta['kernel']}")
     click.echo(f"Initrd  : {meta['initrd']}")
     click.echo(f"Cmdline : {meta['cmdline']}")
+
+
+# ---------------------------------------------------------------------------
+# nightmare-loader download
+# ---------------------------------------------------------------------------
+
+@cli.command("download")
+@click.argument("distro", default="", required=False)
+@click.option(
+    "--out", "-o",
+    default=".",
+    show_default=True,
+    help="Directory to save downloaded ISOs.",
+)
+@click.option(
+    "--all", "download_all",
+    is_flag=True,
+    default=False,
+    help="Download every distro that has a download URL.",
+)
+@click.option(
+    "--list", "list_only",
+    is_flag=True,
+    default=False,
+    help="List all downloadable distros without downloading anything.",
+)
+def download_iso(distro: str, out: str, download_all: bool, list_only: bool) -> None:
+    """
+    Download one or all distro ISOs to a local directory.
+
+    \b
+    DISTRO  Key of the distro to download, e.g. ubuntu, kali, arch.
+            Omit when using --all or --list.
+
+    \b
+    Examples:
+      nightmare-loader download ubuntu
+      nightmare-loader download kali --out ~/isos
+      nightmare-loader download --all --out ~/isos
+      nightmare-loader download --list
+    """
+    from .distros import DISTROS
+
+    # Build the catalogue of downloadable distros (those with a download_url)
+    downloadable = {
+        key: cfg
+        for key, cfg in DISTROS.items()
+        if cfg.get("download_url")
+    }
+
+    if list_only:
+        click.echo("Available distros for download:")
+        click.echo(f"  {'KEY':<20} {'LABEL':<35} {'SIZE (MB)':>10}  URL")
+        click.echo("  " + "-" * 90)
+        for key, cfg in sorted(downloadable.items()):
+            size = cfg.get("download_size_mb", "?")
+            size_str = f"~{size}" if isinstance(size, int) else str(size)
+            url = cfg["download_url"]
+            click.echo(f"  {key:<20} {cfg['label']:<35} {size_str:>10}  {url}")
+        return
+
+    # Decide which keys to process
+    if download_all:
+        keys_to_get = list(sorted(downloadable.keys()))
+    elif distro:
+        if distro not in downloadable:
+            if distro in DISTROS:
+                click.echo(
+                    f"Error: '{distro}' is recognised but has no download URL "
+                    f"(it must be supplied manually).",
+                    err=True,
+                )
+            else:
+                click.echo(
+                    f"Error: unknown distro '{distro}'. "
+                    f"Run 'nightmare-loader download --list' to see available keys.",
+                    err=True,
+                )
+            sys.exit(1)
+        keys_to_get = [distro]
+    else:
+        click.echo(
+            "Specify a DISTRO name, use --all, or --list.\n"
+            "  nightmare-loader download --list",
+            err=True,
+        )
+        sys.exit(1)
+
+    out_dir = Path(out).expanduser().resolve()
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    for key in keys_to_get:
+        cfg = downloadable[key]
+        url = cfg["download_url"]
+        filename = url.split("/")[-1]
+        dest = out_dir / filename
+
+        if dest.exists():
+            click.echo(f"[{key}] Already exists, skipping: {dest}")
+            continue
+
+        size_mb = cfg.get("download_size_mb")
+        size_hint = f" (~{size_mb} MB)" if isinstance(size_mb, int) else ""
+        click.echo(f"[{key}] Downloading {cfg['label']}{size_hint}…")
+        click.echo(f"       {url}")
+        click.echo(f"       → {dest}")
+
+        tmp_dest = dest.with_suffix(dest.suffix + ".part")
+        try:
+            def _reporthook(block_num: int, block_size: int, total_size: int) -> None:
+                downloaded = block_num * block_size
+                if total_size > 0:
+                    pct = min(downloaded * 100 // total_size, 100)
+                    mb = downloaded / 1_048_576
+                    total_mb = total_size / 1_048_576
+                    click.echo(
+                        f"\r       {pct:3d}%  {mb:.1f} / {total_mb:.1f} MB",
+                        nl=False,
+                    )
+                else:
+                    mb = downloaded / 1_048_576
+                    click.echo(f"\r       {mb:.1f} MB downloaded", nl=False)
+
+            urllib.request.urlretrieve(url, str(tmp_dest), reporthook=_reporthook)
+            click.echo()  # newline after progress
+            tmp_dest.rename(dest)
+            click.echo(f"       ✓ Saved to {dest}\n")
+        except Exception as exc:
+            click.echo(f"\n       ✗ Failed: {exc}\n", err=True)
+            if tmp_dest.exists():
+                tmp_dest.unlink()
 
 
 # ---------------------------------------------------------------------------
