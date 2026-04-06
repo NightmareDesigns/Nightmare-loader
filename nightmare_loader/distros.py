@@ -461,6 +461,104 @@ DISTROS: dict[str, dict] = {
             "Use the --windows flag when adding Windows ISOs."
         ),
     },
+    # ---------- Rescuezilla (Ubuntu/Casper – disk imaging & Windows repair) ----------
+    "rescuezilla": {
+        "label": "Rescuezilla",
+        "detect": ["rescuezilla", "casper/vmlinuz"],
+        "kernel": "/casper/vmlinuz",
+        "initrd": "/casper/initrd",
+        "cmdline": (
+            "boot=casper iso-scan/filename={isofile} "
+            "quiet splash ---"
+        ),
+        "download_url": (
+            "https://github.com/rescuezilla/rescuezilla/releases/download/2.5.1/"
+            "rescuezilla-2.5.1-64bit.noble.iso"
+        ),
+        "download_size_mb": 780,
+    },
+    # ---------- SystemRescue (Arch-based, chntpw / ntfs-3g / Windows repair) ----------
+    "systemrescue": {
+        "label": "SystemRescue",
+        "detect": ["sysresccd/boot/x86_64/vmlinuz", "sysresccd/boot/x86_64/sysresccd.img"],
+        "kernel": "/sysresccd/boot/x86_64/vmlinuz",
+        "initrd": "/sysresccd/boot/x86_64/sysresccd.img",
+        "cmdline": (
+            "img_dev=/dev/disk/by-label/NIGHTMARE img_loop={isofile} "
+            "archisobasedir=sysresccd quiet"
+        ),
+        "download_url": (
+            "https://fastly-cdn.system-rescue.org/releases/11.02/"
+            "systemrescue-11.02-amd64.iso"
+        ),
+        "download_size_mb": 800,
+    },
+    # ---------- GParted Live (Debian live – partition editing) ----------
+    "gparted": {
+        "label": "GParted Live",
+        "detect": ["live/vmlinuz", "live/initrd.img", "live/filesystem.squashfs",
+                   "utils/linux/grub2/grub.cfg"],
+        "kernel": "/live/vmlinuz",
+        "initrd": "/live/initrd.img",
+        "cmdline": (
+            "boot=live findiso={isofile} "
+            "quiet splash ---"
+        ),
+        "download_url": (
+            "https://downloads.sourceforge.net/gparted/"
+            "gparted-live-1.6.0-3-amd64.iso"
+        ),
+        "download_size_mb": 600,
+    },
+    # ---------- Clonezilla Live (Debian live – disk backup/restore) ----------
+    "clonezilla": {
+        "label": "Clonezilla Live",
+        "detect": ["live/vmlinuz", "live/initrd.img", "live/filesystem.squashfs",
+                   "utils/grub2/grub.cfg"],
+        "kernel": "/live/vmlinuz",
+        "initrd": "/live/initrd.img",
+        "cmdline": (
+            "boot=live findiso={isofile} union=overlay "
+            "quiet splash ---"
+        ),
+        "download_url": (
+            "https://sourceforge.net/projects/clonezilla/files/clonezilla_live_stable/"
+            "3.1.2-22/clonezilla-live-3.1.2-22-amd64.iso"
+        ),
+        "download_size_mb": 450,
+    },
+    # ---------- Memtest86+ (EFI/legacy RAM tester – chain-boot) ----------
+    "memtest86plus": {
+        "label": "Memtest86+",
+        "detect": ["EFI/BOOT/memtest.efi"],
+        "kernel": None,  # EFI binary – chain-boot only
+        "initrd": None,
+        "cmdline": None,
+        "note": (
+            "Memtest86+ is an EFI application. Copy memtest64.efi to the "
+            "drive's EFI/BOOT/ directory and add a chain-boot GRUB entry."
+        ),
+        "download_url": (
+            "https://www.memtest.org/download/v7.20/mt86plus_7.20_64.iso"
+        ),
+        "download_size_mb": 15,
+    },
+    # ---------- ShredOS (Debian live – secure disk wipe) ----------
+    "shredos": {
+        "label": "ShredOS",
+        "detect": ["live/vmlinuz", "live/initrd.img", "shredos"],
+        "kernel": "/live/vmlinuz",
+        "initrd": "/live/initrd.img",
+        "cmdline": (
+            "boot=live findiso={isofile} "
+            "quiet ---"
+        ),
+        "download_url": (
+            "https://github.com/PartialVolume/shredos.x86_64/releases/download/"
+            "v2024.02.2_26_x86_64_0.38.027/shredos-2024.02.2_26_x86_64_0.38.027.img"
+        ),
+        "download_size_mb": 30,
+    },
     # ---------- Generic fallback ----------
     "generic": {
         "label": "Generic Linux Live",

@@ -519,21 +519,7 @@ def download_iso(distro: str, out: str, download_all: bool, list_only: bool) -> 
 
         tmp_dest = dest.with_suffix(dest.suffix + ".part")
         try:
-            def _reporthook(block_num: int, block_size: int, total_size: int) -> None:
-                downloaded = block_num * block_size
-                if total_size > 0:
-                    pct = min(downloaded * 100 // total_size, 100)
-                    mb = downloaded / 1_048_576
-                    total_mb = total_size / 1_048_576
-                    click.echo(
-                        f"\r       {pct:3d}%  {mb:.1f} / {total_mb:.1f} MB",
-                        nl=False,
-                    )
-                else:
-                    mb = downloaded / 1_048_576
-                    click.echo(f"\r       {mb:.1f} MB downloaded", nl=False)
-
-            urllib.request.urlretrieve(url, str(tmp_dest), reporthook=_reporthook)
+            urllib.request.urlretrieve(url, str(tmp_dest), reporthook=_download_reporthook)
             click.echo()  # newline after progress
             tmp_dest.rename(dest)
             click.echo(f"       ✓ Saved to {dest}\n")
