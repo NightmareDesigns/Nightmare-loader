@@ -35,9 +35,11 @@ GRUB_MODULES = [
     "part_gpt",
     "part_msdos",
     "fat",
+    "ntfs",
     "iso9660",
     "loopback",
     "linux",
+    "chain",
     "normal",
     "configfile",
     "all_video",
@@ -150,7 +152,28 @@ def _linux_entry(label: str, isofile: str, kernel: str, initrd: str, cmdline: st
         """)
 
 
-def _windows_entry(label: str, isofile: str) -> str:
+def _winpe_entry(label: str, isofile: str) -> str:
+    """
+    Generate a GRUB menuentry for a WinPE-based ISO (Hiren's BootCD PE, etc.).
+
+    Uses EFI chain-boot: GRUB mounts the ISO via ``loopback`` and then hands
+    off execution to the EFI binary inside the ISO.  This is the most reliable
+    approach on modern UEFI systems (Windows 11 hardware).
+
+    On legacy BIOS systems the chain-boot path is not available; the entry
+    will fail gracefully with a GRUB error.  For BIOS support, ``wimboot``
+    must be placed at ``/boot/grub/wimboot`` on the USB drive separately.
+    """
+    return textwrap.dedent(f"""\
+        menuentry "{label} (UEFI)" {{
+            set isofile="{isofile}"
+            loopback loop "$isofile"
+            chainloader (loop)/EFI/BOOT/BOOTX64.EFI
+        }}
+        """)
+
+
+
     """
     Generate a GRUB menuentry for a Windows ISO.
 
