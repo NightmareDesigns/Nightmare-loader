@@ -426,16 +426,52 @@ DISTROS: dict[str, dict] = {
         ),
         "download_size_mb": 3100,
     },
-    # ---------- Hiren's BootCD PE (WinPE chain-boot) ----------
+    # ---------- Hiren's BootCD PE (WinPE – full Windows 10/11 repair suite) ----------
     "hirens": {
         "label": "Hiren's BootCD PE",
         "detect": ["sources/boot.wim", "bootmgr", "HBCD_PE/PENetwork.ini"],
-        "kernel": None,  # WinPE requires a chain-boot approach
+        "kernel": None,
         "initrd": None,
         "cmdline": None,
+        "boot_type": "winpe",
         "note": (
-            "Hiren's BootCD PE requires ntfs-3g and a chain-boot shim. "
-            "Use the --windows flag when adding this ISO."
+            "Hiren's BootCD PE boots a full Windows 11 PE environment with "
+            "100+ repair tools including: NirSoft registry editor & viewer, "
+            "password reset, antivirus, MiniTool Partition Wizard, HWiNFO, "
+            "and a full command prompt for bootrec/sfc/chkdsk. "
+            "Download manually from https://www.hirensbootcd.org/download/"
+        ),
+    },
+    # ---------- Windows 11 Installation / Repair Media ----------
+    "win11-repair": {
+        "label": "Windows 11 Repair / Install",
+        "detect": ["sources/boot.wim", "bootmgr", "sources/install.wim"],
+        "kernel": None,
+        "initrd": None,
+        "cmdline": None,
+        "boot_type": "winpe",
+        "note": (
+            "Boot the official Windows 11 ISO and choose 'Repair your computer' "
+            "to access: Startup Repair, System Restore, System Image Recovery, "
+            "and Command Prompt (sfc /scannow, bootrec /fixboot, chkdsk, regedit). "
+            "Download the ISO from: "
+            "https://www.microsoft.com/en-us/software-download/windows11"
+        ),
+    },
+    # ---------- Windows 10 Installation / Repair Media ----------
+    "win10-repair": {
+        "label": "Windows 10 Repair / Install",
+        "detect": ["sources/boot.wim", "bootmgr"],
+        "kernel": None,
+        "initrd": None,
+        "cmdline": None,
+        "boot_type": "winpe",
+        "note": (
+            "Boot the official Windows 10 ISO and choose 'Repair your computer' "
+            "to access: Startup Repair, System Restore, System Image Recovery, "
+            "and Command Prompt (sfc /scannow, bootrec /fixboot, chkdsk, regedit). "
+            "Download the ISO from: "
+            "https://www.microsoft.com/en-us/software-download/windows10"
         ),
     },
     # ---------- ChromeOS Flex (SysLinux/isolinux loopback boot) ----------
@@ -453,12 +489,13 @@ DISTROS: dict[str, dict] = {
     "windows": {
         "label": "Windows",
         "detect": ["sources/boot.wim", "bootmgr"],
-        "kernel": None,  # Windows requires a special chain-boot approach
+        "kernel": None,
         "initrd": None,
         "cmdline": None,
+        "boot_type": "winpe",
         "note": (
-            "Windows ISOs require ntfs-3g and a chain-boot shim. "
-            "Use the --windows flag when adding Windows ISOs."
+            "Windows ISOs use EFI chain-boot on UEFI systems. "
+            "Use win11-repair or win10-repair for the official repair media entries."
         ),
     },
     # ---------- Rescuezilla (Ubuntu/Casper – disk imaging & Windows repair) ----------
@@ -531,12 +568,13 @@ DISTROS: dict[str, dict] = {
     "memtest86plus": {
         "label": "Memtest86+",
         "detect": ["EFI/BOOT/memtest.efi"],
-        "kernel": None,  # EFI binary – chain-boot only
+        "kernel": None,
         "initrd": None,
         "cmdline": None,
+        "boot_type": "winpe",
         "note": (
-            "Memtest86+ is an EFI application. Copy memtest64.efi to the "
-            "drive's EFI/BOOT/ directory and add a chain-boot GRUB entry."
+            "Memtest86+ is an EFI application booted via EFI chain-boot. "
+            "Tests all RAM banks for hardware errors."
         ),
         "download_url": (
             "https://www.memtest.org/download/v7.20/mt86plus_7.20_64.iso"

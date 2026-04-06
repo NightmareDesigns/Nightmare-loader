@@ -154,11 +154,13 @@ def _linux_entry(label: str, isofile: str, kernel: str, initrd: str, cmdline: st
 
 def _winpe_entry(label: str, isofile: str) -> str:
     """
-    Generate a GRUB menuentry for a WinPE-based ISO (Hiren's BootCD PE, etc.).
+    Generate a GRUB menuentry for a WinPE-based ISO (Hiren's BootCD PE,
+    Windows 10/11 installation/repair media, etc.).
 
     Uses EFI chain-boot: GRUB mounts the ISO via ``loopback`` and then hands
-    off execution to the EFI binary inside the ISO.  This is the most reliable
-    approach on modern UEFI systems (Windows 11 hardware).
+    off execution to the EFI binary inside the ISO (``EFI/BOOT/BOOTX64.EFI``).
+    This is the most reliable approach on modern UEFI systems (all Windows 10
+    and Windows 11 hardware supports UEFI).
 
     On legacy BIOS systems the chain-boot path is not available; the entry
     will fail gracefully with a GRUB error.  For BIOS support, ``wimboot``
@@ -173,20 +175,18 @@ def _winpe_entry(label: str, isofile: str) -> str:
         """)
 
 
-
+def _windows_entry(label: str, isofile: str) -> str:
     """
-    Generate a GRUB menuentry for a Windows ISO.
+    Generate a GRUB menuentry for a Windows ISO using the wimboot path.
 
-    Uses the ``ntldr`` / ``chainloader`` approach: we chain into the Windows
-    boot manager after mapping the ISO as a virtual disk via the ``img_mount``
-    command.  This requires the ``wimboot`` kernel to be installed alongside
-    GRUB (copy wimboot to /boot/grub/wimboot on the USB stick).
+    Uses the wimboot kernel to handle WIM-based Windows setup ISOs on legacy
+    BIOS systems.  Requires ``wimboot`` to be placed at ``/boot/grub/wimboot``
+    on the USB drive.  On UEFI systems, prefer ``_winpe_entry`` instead.
     """
     return textwrap.dedent(f"""\
-        menuentry "{label} (Windows – requires wimboot)" {{
+        menuentry "{label} (BIOS – requires wimboot)" {{
             set isofile="{isofile}"
             loopback loop "$isofile"
-            # Load wimboot to handle WIM-based Windows setup
             linux16 /boot/grub/wimboot
             initrd16 \
                 newc:bootmgr:(loop)/bootmgr \
@@ -229,11 +229,14 @@ def generate_grub_cfg(entries: list[dict], label: str = "NIGHTMARE") -> str:
         kernel = entry.get("kernel")
         initrd = entry.get("initrd")
         cmdline = entry.get("cmdline", "quiet splash")
+        boot_type = entry.get("boot_type", "")
 
-        if distro == "windows" or (kernel is None and initrd is None):
-            # Windows ISOs and any entry whose distro config has kernel=None /
-            # initrd=None intentionally use the wimboot chain-boot path instead
-            # of the standard linux/initrd loopback approach.
+        if boot_type == "winpe" or (not boot_type and kernel is None and distro != "windows"):
+            # WinPE ISOs (Hiren's BootCD PE, Windows install/repair media, Memtest86+…)
+            # use EFI chain-boot – the most reliable path on modern UEFI hardware.
+            parts.append(_winpe_entry(label, isofile))
+        elif boot_type == "wimboot" or (not boot_type and kernel is None and distro == "windows"):
+            # Legacy BIOS wimboot path for plain Windows ISOs when no boot_type is set.
             parts.append(_windows_entry(label, isofile))
         else:
             parts.append(_linux_entry(label, isofile, kernel, initrd, cmdline))
