@@ -445,7 +445,7 @@ DISTROS: dict[str, dict] = {
     # ---------- Windows 11 Installation / Repair Media ----------
     "win11-repair": {
         "label": "Windows 11 Repair / Install",
-        "detect": ["sources/boot.wim", "bootmgr", "sources/install.wim"],
+        "detect": [],
         "kernel": None,
         "initrd": None,
         "cmdline": None,
@@ -461,7 +461,7 @@ DISTROS: dict[str, dict] = {
     # ---------- Windows 10 Installation / Repair Media ----------
     "win10-repair": {
         "label": "Windows 10 Repair / Install",
-        "detect": ["sources/boot.wim", "bootmgr"],
+        "detect": [],
         "kernel": None,
         "initrd": None,
         "cmdline": None,
@@ -606,6 +606,51 @@ DISTROS: dict[str, dict] = {
         "cmdline": "quiet splash",
     },
 }
+
+
+# ---------------------------------------------------------------------------
+# Curated 64 GB kit
+# ---------------------------------------------------------------------------
+
+# Each entry is (distro_key, approximate_size_mb, category, short_description).
+# Total is kept under 58 000 MB (~57 GB) to leave room for FAT32 overhead and
+# the Windows ISOs that the user must download manually from Microsoft.
+KIT_64GB: list[tuple[str, int, str, str]] = [
+    # ── Windows repair (manual download – add these yourself) ──────────────
+    # win11-repair   ~5800 MB  (download from microsoft.com)
+    # win10-repair   ~4700 MB  (download from microsoft.com)
+    # hirens         ~700 MB   (download from hirensbootcd.org)
+
+    # ── Auto-downloadable repair & recovery tools (~2 275 MB) ──────────────
+    ("rescuezilla",   780,  "repair",  "Graphical disk/file recovery & Windows repair"),
+    ("systemrescue",  800,  "repair",  "CLI toolkit: chntpw, ntfsfix, testdisk, photorec"),
+    ("gparted",       600,  "repair",  "Partition resize, repair, and management"),
+    ("clonezilla",    450,  "repair",  "Full-disk backup and bare-metal restore"),
+    ("memtest86plus",  15,  "repair",  "RAM hardware diagnostic"),
+    ("shredos",        30,  "repair",  "Secure drive wipe (nwipe)"),
+
+    # ── General-purpose desktop Linux (~8 300 MB) ──────────────────────────
+    ("ubuntu",       5800,  "desktop", "Ubuntu 24.04 LTS – daily driver"),
+    ("mint",         2800,  "desktop", "Linux Mint 22.1 Cinnamon – Windows-like desktop"),
+    ("fedora",       2200,  "desktop", "Fedora 41 Workstation – cutting-edge Linux"),
+
+    # ── Lightweight / recovery Linux (~4 300 MB) ───────────────────────────
+    ("debian",       3200,  "desktop", "Debian Live 12 – rock-solid base OS"),
+    ("mxlinux",      1900,  "desktop", "MX Linux – fast, great live-boot tools"),
+
+    # ── Security & privacy (~6 700 MB) ────────────────────────────────────
+    ("kali",         4100,  "security","Kali Linux – penetration testing"),
+    ("tails",        1300,  "security","Tails – anonymous, amnesic OS"),
+    ("parrot-home",  2400,  "security","Parrot Home – privacy-focused desktop"),
+
+    # ── Arch-based advanced (~1 800 MB) ───────────────────────────────────
+    ("arch",          900,  "advanced","Arch Linux – bleeding edge, minimal"),
+    ("endeavouros",  2800,  "advanced","EndeavourOS – Arch with a friendly installer"),
+]
+
+# Running total of auto-downloadable items (MB)
+KIT_64GB_AUTO_MB: int = sum(size for _, size, _, _ in KIT_64GB)
+
 
 
 def detect_distro(iso_files: list[str]) -> str:
