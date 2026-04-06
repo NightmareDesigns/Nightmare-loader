@@ -141,7 +141,7 @@ DISTROS: dict[str, dict] = {
         "kernel": "/syslinux/vmlinuz",
         "initrd": "/syslinux/initrd.img",
         "cmdline": (
-            "loopback loop {isofile} root=/dev/loop0 "
+            "img_loop={isofile} root=/dev/loop0 "
             "quiet splash"
         ),
     },
