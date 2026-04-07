@@ -101,13 +101,14 @@ from the Nightmare Loader menu.
 nightmare-loader COMMAND [OPTIONS] [ARGS]
 
 Commands:
-  prepare  Partition, format, and install GRUB on a drive
-  add      Add an ISO to the drive
-  remove   Remove an ISO from the drive
-  list     List all registered ISOs on a drive
-  update   Re-generate grub.cfg from stored state
-  drives   List removable drives on this machine
-  info     Show detected distro info for an ISO (no drive needed)
+  prepare    Partition, format, and install GRUB on a drive
+  add        Add an ISO to the drive
+  remove     Remove an ISO from the drive
+  list       List all registered ISOs on a drive
+  update     Re-generate grub.cfg from stored state
+  drives     List removable drives on this machine
+  info       Show detected distro info for an ISO (no drive needed)
+  build-iso  Build the bootable Nightmare Loader live ISO
 ```
 
 ### `prepare`
@@ -318,11 +319,25 @@ Nightmare Loader, then drops into a root shell showing the quick-start banner.
 # Install build tools (Debian/Ubuntu)
 sudo apt install debootstrap squashfs-tools grub-pc-bin grub-efi-amd64-bin xorriso mtools
 
+# Clone the repository (if you haven't already) and enter it
+git clone https://github.com/NightmareDesigns/Nightmare-loader.git
+cd Nightmare-loader
+
 # Build (takes ~5–10 minutes; root required for debootstrap/chroot)
 sudo ./build_iso.sh
 
 # Custom output path
 sudo ./build_iso.sh --output ~/Downloads/nightmare-loader-live.iso
+```
+
+If you already have `nightmare-loader` installed you can also use the built-in
+command (it finds `build_iso.sh` automatically when run from the repository
+checkout):
+
+```bash
+cd Nightmare-loader
+nightmare-loader build-iso
+nightmare-loader build-iso --output ~/Downloads/nightmare-loader-live.iso
 ```
 
 #### Option B – Termux on a rooted Android phone
