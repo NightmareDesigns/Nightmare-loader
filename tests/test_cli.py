@@ -35,19 +35,19 @@ class TestRequireRoot:
         """On Termux the error should suggest tsu, not sudo."""
         with patch("os.geteuid", return_value=1000), \
              patch("nightmare_loader.cli._is_termux", return_value=True):
-            runner = CliRunner(mix_stderr=False)
+            runner = CliRunner()
             result = runner.invoke(cli, ["prepare", "/dev/sda", "--yes"])
         assert result.exit_code != 0
-        assert "tsu" in result.output or "tsu" in (result.stderr or "")
+        assert "tsu" in result.output
 
     def test_non_termux_message_mentions_sudo(self):
         """On non-Termux the error should mention sudo."""
         with patch("os.geteuid", return_value=1000), \
              patch("nightmare_loader.cli._is_termux", return_value=False):
-            runner = CliRunner(mix_stderr=False)
+            runner = CliRunner()
             result = runner.invoke(cli, ["prepare", "/dev/sda", "--yes"])
         assert result.exit_code != 0
-        combined = result.output + (result.stderr or "")
+        combined = result.output
         assert "sudo" in combined or "root" in combined
 
 
@@ -164,19 +164,19 @@ class TestListWithMountPoint:
         assert "ubuntu.iso" in result.output
 
     def test_list_no_root_no_mount_point_fails(self):
-        runner = CliRunner(mix_stderr=False)
+        runner = CliRunner()
         with patch("os.geteuid", return_value=1000), \
              patch("nightmare_loader.cli._is_termux", return_value=False):
             result = runner.invoke(cli, ["list", "/dev/sda"])
         assert result.exit_code != 0
 
     def test_list_termux_no_root_no_mount_point_suggests_mount_point(self):
-        runner = CliRunner(mix_stderr=False)
+        runner = CliRunner()
         with patch("os.geteuid", return_value=1000), \
              patch("nightmare_loader.cli._is_termux", return_value=True):
             result = runner.invoke(cli, ["list", "/dev/sda"])
         assert result.exit_code != 0
-        combined = result.output + (result.stderr or "")
+        combined = result.output
         assert "--mount-point" in combined
 
 
@@ -320,12 +320,12 @@ class TestDownloadSingle:
         assert "skipping" in result.output
 
     def test_unknown_distro_exits_nonzero(self):
-        runner = CliRunner(mix_stderr=False)
+        runner = CliRunner()
         result = runner.invoke(cli, ["download", "nonexistent-distro-xyz"])
         assert result.exit_code != 0
 
     def test_download_failure_exits_nonzero(self, tmp_path):
-        runner = CliRunner(mix_stderr=False)
+        runner = CliRunner()
         with patch(
             "urllib.request.urlretrieve",
             side_effect=OSError("network error"),
@@ -334,11 +334,11 @@ class TestDownloadSingle:
                 cli, ["download", "ubuntu", "--out", str(tmp_path)]
             )
         assert result.exit_code != 0
-        combined = result.output + (result.stderr or "")
+        combined = result.output
         assert "Failed" in combined or "failed" in combined
 
     def test_no_args_exits_nonzero(self):
-        runner = CliRunner(mix_stderr=False)
+        runner = CliRunner()
         result = runner.invoke(cli, ["download"])
         assert result.exit_code != 0
 
@@ -426,7 +426,7 @@ class TestKitDownload:
         assert mock_get.call_count == downloadable_count
 
     def test_download_failure_exits_nonzero(self, tmp_path):
-        runner = CliRunner(mix_stderr=False)
+        runner = CliRunner()
         with patch(
             "urllib.request.urlretrieve",
             side_effect=OSError("network error"),
@@ -435,7 +435,7 @@ class TestKitDownload:
                 cli, ["kit", "--download", "--out", str(tmp_path)]
             )
         assert result.exit_code != 0
-        combined = result.output + (result.stderr or "")
+        combined = result.output
         assert "failed" in combined.lower()
 
     def test_category_filter_downloads_only_matching(self, tmp_path):
