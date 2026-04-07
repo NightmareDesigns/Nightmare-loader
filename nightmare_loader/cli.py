@@ -579,6 +579,123 @@ def install_launcher(desktop: bool) -> None:
 
 
 # ---------------------------------------------------------------------------
+# nightmare-loader build-iso
+# ---------------------------------------------------------------------------
+
+@cli.command("build-iso")
+@click.option("--output", "-o", default=None, metavar="PATH",
+              help="Output ISO path (default: ./nightmare-loader-live.iso).")
+@click.option("--termux", "force_termux", is_flag=True, default=False,
+              help="Force the Termux/Android (Alpine + QEMU) build path.")
+@click.option("--no-termux", "force_no_termux", is_flag=True, default=False,
+              help="Force the native Linux (Debian + debootstrap) build path.")
+@click.option("--suite", default=None, metavar="SUITE",
+              help="Debian suite for the live rootfs (Linux path only; default: bookworm).")
+@click.option("--mirror", default=None, metavar="URL",
+              help="Debian mirror URL (Linux path only).")
+def build_iso_cmd(
+    output: str | None,
+    force_termux: bool,
+    force_no_termux: bool,
+    suite: str | None,
+    mirror: str | None,
+) -> None:
+    """
+    Build a bootable Nightmare Loader live ISO (hybrid BIOS + UEFI).
+
+    \b
+    Locates build_iso.sh (in the repository checkout or current directory) and
+    runs it.  If not already root the command re-invokes itself under sudo
+    (Linux) or tsu (Android/Termux).
+
+    \b
+    Required tools – Linux host:
+      sudo apt install debootstrap squashfs-tools grub-pc-bin \\
+                       grub-efi-amd64-bin xorriso mtools
+    Required tools – Termux:
+      pkg install squashfs-tools xorriso mtools curl cpio gzip qemu-user-x86-64
+
+    \b
+    Alternatively, build inside Docker (no root on the host):
+      docker build -t nightmare-iso-builder -f Dockerfile.iso-builder .
+      docker run --rm --privileged -v "$(pwd)":/out nightmare-iso-builder
+    """
+    import subprocess
+
+    # Locate build_iso.sh.  Search in:
+    #   1. The directory that contains this Python file's package root
+    #      (works for editable/source installs: pip install -e .)
+    #   2. The current working directory
+    pkg_dir = Path(__file__).parent
+    candidates = [
+        pkg_dir.parent / "build_iso.sh",   # source / editable install
+        Path("build_iso.sh").resolve(),     # current working directory
+    ]
+
+    script: Path | None = None
+    for candidate in candidates:
+        if candidate.is_file():
+            script = candidate.resolve()
+            break
+
+    if script is None:
+        click.echo(
+            "Error: build_iso.sh not found.\n"
+            "\n"
+            "Run this command from the cloned repository:\n"
+            "  git clone https://github.com/NightmareDesigns/Nightmare-loader.git\n"
+            "  cd Nightmare-loader\n"
+            "  nightmare-loader build-iso\n"
+            "\n"
+            "Or build with Docker (no root required on the host):\n"
+            "  docker build -t nightmare-iso-builder -f Dockerfile.iso-builder .\n"
+            "  docker run --rm --privileged -v \"$(pwd)\":/out nightmare-iso-builder",
+            err=True,
+        )
+        sys.exit(1)
+
+    cmd: list[str] = ["bash", str(script)]
+    if output:
+        cmd += ["--output", output]
+    if force_termux:
+        cmd.append("--termux")
+    if force_no_termux:
+        cmd.append("--no-termux")
+    if suite:
+        cmd += ["--suite", suite]
+    if mirror:
+        cmd += ["--mirror", mirror]
+
+    if os.geteuid() != 0:
+        if _is_termux():
+            if shutil.which("tsu"):
+                cmd = ["tsu", "-c", shlex.join(cmd)]
+            else:
+                click.echo(
+                    "Error: root is required to build the ISO.\n"
+                    "\n"
+                    "Install tsu and retry:\n"
+                    "  pkg install tsu\n"
+                    "  nightmare-loader build-iso",
+                    err=True,
+                )
+                sys.exit(1)
+        else:
+            if shutil.which("sudo"):
+                cmd = ["sudo"] + cmd
+            else:
+                click.echo(
+                    "Error: root is required to build the ISO.\n"
+                    "Run with sudo:\n"
+                    "  sudo nightmare-loader build-iso",
+                    err=True,
+                )
+                sys.exit(1)
+
+    sys.exit(subprocess.call(cmd))
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
