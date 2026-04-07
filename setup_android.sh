@@ -1,6 +1,8 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # setup_android.sh
-# One-shot Termux setup script for Nightmare Loader on Android.
+# All-in-one Termux setup script for Nightmare Loader on Android.
+# Installs every dependency needed to run Nightmare Loader AND to build the
+# bootable live ISO – all in a single pass.
 #
 # Requirements:
 #   - Termux (https://github.com/termux/termux-app) installed from F-Droid
@@ -9,9 +11,11 @@
 #
 # What this script does:
 #   1. Updates Termux packages
-#   2. Installs Python 3, pip, and disk-utility dependencies
-#   3. Installs Nightmare Loader from the local checkout (or from PyPI)
-#   4. Creates a Termux:Widget launcher shortcut in ~/.shortcuts/
+#   2. Installs runtime dependencies (Python, parted, dosfstools, util-linux)
+#   3. Installs ISO build tools (squashfs-tools, xorriso, mtools, curl,
+#      cpio, gzip, qemu-user-x86-64) and tsu (root helper)
+#   4. Installs Nightmare Loader from the local checkout (or from PyPI)
+#   5. Creates a Termux:Widget launcher shortcut in ~/.shortcuts/
 #
 # Root vs. no-root:
 #   Nightmare Loader works in two modes on Android:
@@ -33,6 +37,8 @@
 #         tsu -c 'nightmare-loader prepare /dev/sda'
 #     - Mount/unmount drives automatically (no --mount-point needed):
 #         tsu -c 'nightmare-loader add /dev/sda my.iso'
+#     - Build the bootable live ISO:
+#         nightmare-loader build-iso --output /sdcard/nightmare-loader-live.iso
 #
 #   Termux:Widget add-on (from F-Droid) lets you launch the app from the
 #   Android home screen.
@@ -49,31 +55,46 @@ warn()  { echo -e "${YELLOW}[WARN]${RESET}  $*"; }
 step()  { echo -e "\n${BOLD}$*${RESET}"; }
 
 step "============================================================"
-step " Nightmare Loader – Android/Termux Setup"
+step " Nightmare Loader – Android/Termux All-in-One Setup"
 step "============================================================"
 echo
 
 # ── Step 1: Update package index ────────────────────────────────
-step "[1/4] Updating Termux packages..."
+step "[1/5] Updating Termux packages..."
 pkg update -y
 pkg upgrade -y
 echo
 
-# ── Step 2: Install system dependencies ─────────────────────────
-step "[2/4] Installing dependencies..."
+# ── Step 2: Install runtime dependencies ────────────────────────
+step "[2/5] Installing runtime dependencies..."
 pkg install -y python python-pip parted dosfstools util-linux
+echo
 
-# Optional: tsu for root access (needed for drive partitioning and ISO build)
-if ! command -v tsu >/dev/null 2>&1; then
-    warn "tsu (Termux root helper) not found."
-    warn "Drive partitioning requires root. Install with: pkg install tsu"
-    warn "Without root you can still manage ISOs on already-mounted drives"
-    warn "using the --mount-point option."
+# ── Step 3: Install ISO build tools + tsu ───────────────────────
+step "[3/5] Installing ISO build tools..."
+# squashfs-tools  – mksquashfs to create the live filesystem image
+# xorriso         – ISO packager used by grub-mkrescue
+# mtools          – FAT/El Torito helpers used by grub-mkrescue
+# curl            – download Alpine Linux minirootfs during the build
+# cpio / gzip     – create the custom initramfs
+# qemu-user-x86-64 – run x86_64 binaries (grub-mkrescue etc.) on ARM64
+pkg install -y squashfs-tools xorriso mtools curl cpio gzip qemu-user-x86-64
+echo
+
+# tsu: the Termux root helper – needed for drive partitioning and ISO build.
+# pkg install tsu may fail on non-rooted devices (the package is a stub that
+# just prints an error at runtime), so we allow it to fail silently here.
+if pkg install -y tsu 2>/dev/null; then
+    info "tsu installed – root operations available."
+else
+    warn "tsu could not be installed (device may not be rooted)."
+    warn "Drive partitioning and ISO building require root."
+    warn "On a rooted device, install tsu manually: pkg install tsu"
 fi
 echo
 
-# ── Step 3: Install Nightmare Loader ────────────────────────────
-step "[3/4] Installing Nightmare Loader..."
+# ── Step 4: Install Nightmare Loader ────────────────────────────
+step "[4/5] Installing Nightmare Loader..."
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if [ -f "$SCRIPT_DIR/pyproject.toml" ]; then
@@ -85,15 +106,15 @@ else
 fi
 echo
 
-# ── Step 4: Create Termux:Widget shortcut ───────────────────────
-step "[4/4] Creating Termux:Widget shortcut..."
+# ── Step 5: Create Termux:Widget shortcut ───────────────────────
+step "[5/5] Creating Termux:Widget shortcut..."
 nightmare-loader install-launcher
 echo
 
 # ── Done ────────────────────────────────────────────────────────
 echo
 echo -e "${GREEN}============================================================${RESET}"
-echo -e "${GREEN} Setup complete!${RESET}"
+echo -e "${GREEN} All-in-one setup complete!${RESET}"
 echo
 echo " Usage (no root required):"
 echo "   nightmare-loader info my.iso         (inspect an ISO)"
@@ -108,17 +129,16 @@ echo "   nightmare-loader remove /dev/sda my.iso --mount-point /storage/XXXX-XXX
 echo "   nightmare-loader update /dev/sda --mount-point /storage/XXXX-XXXX"
 echo
 echo " Root-only operations (requires rooted device + tsu):"
-echo "   pkg install tsu"
-echo "   tsu -c 'nightmare-loader prepare /dev/sda'"
+echo "   tsu -c 'nightmare-loader prepare /dev/sda'   (partition a USB drive)"
 echo "   tsu -c 'nightmare-loader add /dev/sda my.iso'"
 echo
-echo " Building a bootable live ISO from your phone (rooted device):"
-echo "   Install extra build tools:"
-echo "     pkg install squashfs-tools xorriso mtools curl cpio gzip qemu-user-x86-64"
-echo "   Then build (runs as root via tsu):"
-echo "     tsu -c 'bash build_iso.sh --output /sdcard/nightmare-loader-live.iso'"
-echo "   Write the ISO to a USB drive with EtchDroid (no root needed on Android),"
-echo "   or serve it directly as a virtual drive via DriveDroid (root required)."
+echo " Building the bootable live ISO (requires root via tsu):"
+echo "   nightmare-loader build-iso --output /sdcard/nightmare-loader-live.iso"
+echo "   (or: tsu -c 'bash build_iso.sh --output /sdcard/nightmare-loader-live.iso')"
+echo "   Takes ~10–20 minutes. Uses Alpine Linux x86_64 + QEMU emulation."
+echo "   Once built:"
+echo "     • EtchDroid (no root): copy ISO to phone, plug USB drive via OTG, write."
+echo "     • DriveDroid (root):   serve ISO directly from your phone as virtual USB."
 echo
 echo " Termux:Widget shortcut:"
 echo "   Install 'Termux:Widget' from F-Droid, add the widget to"
