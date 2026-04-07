@@ -28,6 +28,7 @@ import contextlib
 import os
 import shlex
 import shutil
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -620,8 +621,6 @@ def build_iso_cmd(
       docker build -t nightmare-iso-builder -f Dockerfile.iso-builder .
       docker run --rm --privileged -v "$(pwd)":/out nightmare-iso-builder
     """
-    import subprocess
-
     # Locate build_iso.sh.  Search in:
     #   1. The directory that contains this Python file's package root
     #      (works for editable/source installs: pip install -e .)
@@ -665,6 +664,17 @@ def build_iso_cmd(
         cmd += ["--suite", suite]
     if mirror:
         cmd += ["--mirror", mirror]
+
+    if sys.platform == "win32":
+        click.echo(
+            "Error: building the live ISO is not supported on Windows.\n"
+            "\n"
+            "Use Docker Desktop (WSL 2 backend) instead:\n"
+            "  docker build -t nightmare-iso-builder -f Dockerfile.iso-builder .\n"
+            "  docker run --rm --privileged -v \"%cd%\":/out nightmare-iso-builder",
+            err=True,
+        )
+        sys.exit(1)
 
     if os.geteuid() != 0:
         if _is_termux():
