@@ -268,6 +268,25 @@ tsu -c 'nightmare-loader prepare /dev/sda'
 tsu -c 'nightmare-loader add /dev/sda ubuntu.iso'
 ```
 
+### Building a bootable live ISO from Termux
+
+On a **rooted** device you can build the full Nightmare Loader live ISO
+directly from Termux — no Linux PC needed:
+
+```bash
+# Install build dependencies
+pkg install squashfs-tools xorriso mtools curl cpio gzip qemu-user-x86-64
+
+# Build the ISO (saves to /sdcard for easy access from Android)
+tsu -c 'bash build_iso.sh --output /sdcard/nightmare-loader-live.iso'
+```
+
+The build uses Alpine Linux x86_64 (via QEMU emulation) as the live rootfs,
+so the ISO boots on any x86-64 PC.  Once built, write it to a USB drive with
+**EtchDroid** (no root needed) or serve it as a virtual drive with
+**DriveDroid**.  See the [Bootable Live ISO](#bootable-live-iso-use-from-your-phone)
+section for full details.
+
 ### Termux:Widget home-screen shortcut
 
 Install **Termux:Widget** from F-Droid, then run:
@@ -306,7 +325,28 @@ sudo ./build_iso.sh
 sudo ./build_iso.sh --output ~/Downloads/nightmare-loader-live.iso
 ```
 
-#### Option B – Docker (no root on the host)
+#### Option B – Termux on a rooted Android phone
+
+`build_iso.sh` auto-detects Termux and switches to an Alpine Linux x86_64
+base with QEMU user-mode emulation — no Linux PC needed.
+
+```bash
+# Install the extra build tools once
+pkg install squashfs-tools xorriso mtools curl cpio gzip qemu-user-x86-64
+
+# Build (requires root via tsu; takes ~10–20 minutes on most phones)
+tsu -c 'bash build_iso.sh --output /sdcard/nightmare-loader-live.iso'
+```
+
+The Termux path uses:
+- **Alpine Linux x86_64** as the live rootfs (lighter than Debian, ~200 MB)
+- **QEMU x86_64 emulation** (via `binfmt_misc`) for transparent cross-arch chroot
+- A **custom initramfs** (`nightmare-live-init.sh`) that mounts the squashfs and overlayfs at boot
+- Alpine's **`mkinitfs`** with the `nightmare-live` feature set for squashfs live boot
+- Termux-native **`mksquashfs`** for fast squashfs creation (no emulation overhead)
+- **`grub-mkrescue`** running inside the Alpine chroot for genuine x86_64 GRUB modules
+
+#### Option C – Docker (no root on the host)
 
 ```bash
 docker build -t nightmare-iso-builder -f Dockerfile.iso-builder .
@@ -331,21 +371,23 @@ inside the container.
 * Full `nightmare-loader` CLI and web UI (`nightmare-loader ui`)
 * All runtime dependencies: `grub-install`, `parted`, `mkfs.fat`, `genisoimage`
 * Auto-login as root on `tty1` — no password prompt
+* Nightmare Loader branded **preloader splash** before the boot menu appears
 * Welcome banner with the quick-start workflow printed on every login
 
 ### File layout
 
 ```
-build_iso.sh               Main build script
-Dockerfile.iso-builder     Docker build environment
+build_iso.sh               Main build script (auto-detects Termux vs Linux)
+Dockerfile.iso-builder     Docker build environment (Linux/Debian path)
 iso_root/                  Overlay applied on top of the live rootfs
   etc/systemd/system/
     getty@tty1.service.d/
-      autologin.conf       Auto-login as root on tty1
+      autologin.conf       Auto-login as root on tty1 (Debian/systemd)
   usr/local/bin/
-    nightmare-welcome.sh   Welcome banner shown on login
+    nightmare-welcome.sh          Welcome banner shown on login
+    nightmare-live-init.sh        Custom mkinitfs init (Alpine/Termux path)
   root/
-    .bash_profile          Sources nightmare-welcome.sh on login
+    .bash_profile                 Sources nightmare-welcome.sh on login
 ```
 
 ---

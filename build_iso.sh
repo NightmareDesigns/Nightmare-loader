@@ -6,14 +6,24 @@
 # boot it drops into a root shell running the Nightmare Loader welcome screen
 # from which you can prepare USB drives, add ISOs, and use the web UI.
 #
-# Requirements (Debian/Ubuntu host or Dockerfile.iso-builder):
-#   debootstrap mksquashfs grub-pc-bin grub-efi-amd64-bin xorriso mtools
+# TWO BUILD PATHS
+# ─────────────────────────────────────────────────────────────────
+#  Linux host  (default)
+#    Uses debootstrap + Debian bookworm as the live rootfs.  Full live-boot
+#    support via the debian live-boot package.
+#    Required: debootstrap mksquashfs grub-pc-bin grub-efi-amd64-bin xorriso mtools
+#
+#  Termux / Android  (auto-detected, or use --termux)
+#    Uses an Alpine Linux x86_64 minirootfs + QEMU user-mode emulation for
+#    transparent x86_64 chroot on ARM64.  grub-mkrescue runs inside the
+#    Alpine chroot (via QEMU) so genuine x86_64 GRUB modules are used.
+#    Required Termux packages:
+#      pkg install squashfs-tools xorriso mtools curl cpio gzip qemu-user-x86-64
+#    Root access (tsu) is required in both cases.
 #
 # Usage:
-#   sudo ./build_iso.sh [--output PATH] [--suite bookworm]
-#
-# Output:
-#   nightmare-loader-live.iso  (in the current directory, or --output path)
+#   sudo ./build_iso.sh [--output PATH] [--termux] [--no-termux]
+#   sudo ./build_iso.sh [--suite bookworm] [--mirror URL]   # Linux only
 #
 # To build inside Docker (no root required on the host):
 #   docker build -t nightmare-iso-builder -f Dockerfile.iso-builder .
@@ -44,25 +54,38 @@ SUITE="bookworm"
 OUTPUT_ISO="$(pwd)/nightmare-loader-live.iso"
 MIRROR="https://deb.debian.org/debian"
 
+# Auto-detect Termux
+if [[ -n "${TERMUX_VERSION:-}" ]] || [[ -d /data/data/com.termux ]]; then
+    TERMUX_BUILD=1
+else
+    TERMUX_BUILD=0
+fi
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --output)  OUTPUT_ISO="$2"; shift 2 ;;
-        --suite)   SUITE="$2";     shift 2 ;;
-        --mirror)  MIRROR="$2";    shift 2 ;;
+        --output)       OUTPUT_ISO="$2";  shift 2 ;;
+        --suite)        SUITE="$2";       shift 2 ;;
+        --mirror)       MIRROR="$2";      shift 2 ;;
+        --termux)       TERMUX_BUILD=1;   shift   ;;
+        --no-termux)    TERMUX_BUILD=0;   shift   ;;
         -h|--help)
-            echo "Usage: sudo $0 [--output PATH] [--suite bookworm] [--mirror URL]"
+            echo "Usage: sudo $0 [--output PATH] [--termux|--no-termux]"
+            echo "       [--suite bookworm] [--mirror URL]"
             exit 0 ;;
         *) die "Unknown option: $1" ;;
     esac
 done
 
-# Make the output path absolute before we cd around
 OUTPUT_ISO="$(realpath -m "$OUTPUT_ISO")"
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STAGING="$(mktemp -d /tmp/nightmare-iso-XXXXXX)"
 ROOTFS="$STAGING/rootfs"
 ISO_STAGE="$STAGING/iso"
+
+# Alpine settings (Termux path only)
+ALPINE_VERSION="3.21.3"
+ALPINE_ARCH="x86_64"
+ALPINE_MIRROR="https://dl-cdn.alpinelinux.org/alpine"
 
 # ---------------------------------------------------------------------------
 # Preflight checks
@@ -70,38 +93,136 @@ ISO_STAGE="$STAGING/iso"
 
 step "Checking prerequisites"
 
-[[ $EUID -eq 0 ]] || die "This script must be run as root (or inside Docker with --privileged)."
+[[ $EUID -eq 0 ]] || die "This script must be run as root (tsu on Termux, sudo on Linux)."
 
-for cmd in debootstrap mksquashfs grub-mkrescue xorriso mtools; do
-    if command -v "$cmd" &>/dev/null; then
-        info "  $cmd  ✓"
+if [[ $TERMUX_BUILD -eq 1 ]]; then
+    info "Build mode: Termux / Android (Alpine x86_64 + QEMU)"
+    MISSING_PKGS=""
+    for cmd in mksquashfs xorriso mtools curl cpio gzip; do
+        if command -v "$cmd" &>/dev/null; then
+            info "  $cmd  ✓"
+        else
+            warn "  $cmd  ✗  (missing)"
+            MISSING_PKGS="$MISSING_PKGS $cmd"
+        fi
+    done
+    # QEMU for x86_64 emulation
+    if command -v qemu-x86_64 &>/dev/null; then
+        info "  qemu-x86_64  ✓"
+        QEMU_BIN="$(command -v qemu-x86_64)"
     else
-        die "'$cmd' is not installed. Install it with:\n  apt-get install debootstrap squashfs-tools grub-pc-bin grub-efi-amd64-bin xorriso mtools"
+        warn "  qemu-x86_64  ✗  (missing)"
+        MISSING_PKGS="$MISSING_PKGS qemu-user-x86-64"
     fi
-done
+    if [[ -n "${MISSING_PKGS# }" ]]; then
+        echo
+        echo "  Install missing Termux packages with:"
+        echo "    pkg install squashfs-tools xorriso mtools curl cpio gzip qemu-user-x86-64"
+        die "Missing required packages:${MISSING_PKGS}"
+    fi
+else
+    info "Build mode: native Linux (Debian bookworm + debootstrap)"
+    for cmd in debootstrap mksquashfs grub-mkrescue xorriso mtools; do
+        if command -v "$cmd" &>/dev/null; then
+            info "  $cmd  ✓"
+        else
+            die "'$cmd' not found. Install:\n  apt-get install debootstrap squashfs-tools grub-pc-bin grub-efi-amd64-bin xorriso mtools"
+        fi
+    done
+fi
 
 # ---------------------------------------------------------------------------
-# Stage 1 – Bootstrap a minimal Debian root filesystem
+# Shared: mount / unmount helpers
 # ---------------------------------------------------------------------------
 
-step "Stage 1/6 – Bootstrapping Debian $SUITE"
+MOUNTS_ACTIVE=0
 
-mkdir -p "$ROOTFS"
-debootstrap \
-    --variant=minbase \
-    --include=linux-image-amd64,live-boot,live-boot-initramfs-tools,systemd-sysv \
-    "$SUITE" "$ROOTFS" "$MIRROR"
+setup_mounts() {
+    for fs in dev dev/pts proc sys run; do
+        mkdir -p "$ROOTFS/$fs"
+        mount --bind "/$fs" "$ROOTFS/$fs"
+    done
+    MOUNTS_ACTIVE=1
+}
+
+cleanup_mounts() {
+    if [[ $MOUNTS_ACTIVE -eq 1 ]]; then
+        for fs in run sys proc dev/pts dev; do
+            umount -lf "$ROOTFS/$fs" 2>/dev/null || true
+        done
+        MOUNTS_ACTIVE=0
+    fi
+}
+
+cleanup_all() {
+    cleanup_mounts
+    # Tear down QEMU binfmt if we set it up
+    if [[ -f /proc/sys/fs/binfmt_misc/qemu-x86_64 ]]; then
+        echo -1 > /proc/sys/fs/binfmt_misc/qemu-x86_64 2>/dev/null || true
+    fi
+    rm -rf "$STAGING"
+}
+trap cleanup_all EXIT
 
 # ---------------------------------------------------------------------------
-# Stage 2 – Install Nightmare Loader and its runtime dependencies
+# Stage 1 – Bootstrap root filesystem
 # ---------------------------------------------------------------------------
 
-step "Stage 2/6 – Installing packages and Nightmare Loader"
+if [[ $TERMUX_BUILD -eq 1 ]]; then
 
-# Write an APT sources list that avoids interactive prompts
-cat > "$ROOTFS/etc/apt/sources.list" <<EOF
-deb $MIRROR $SUITE main contrib non-free
-EOF
+    step "Stage 1/6 – Downloading Alpine Linux $ALPINE_VERSION x86_64 minirootfs"
+
+    ALPINE_TAR="alpine-minirootfs-${ALPINE_VERSION}-${ALPINE_ARCH}.tar.gz"
+    ALPINE_URL="${ALPINE_MIRROR}/v${ALPINE_VERSION%.*}/releases/${ALPINE_ARCH}/${ALPINE_TAR}"
+
+    mkdir -p "$ROOTFS"
+    info "Fetching $ALPINE_URL …"
+    curl -fL --progress-bar "$ALPINE_URL" | tar -xzf - -C "$ROOTFS"
+
+    # ── Set up QEMU binfmt_misc so x86_64 ELF binaries run transparently ──
+    # The 'F' (fix binary) flag makes the kernel open the QEMU interpreter
+    # before entering the chroot so Termux's dynamically-linked qemu-x86_64
+    # is used even though its ARM64 libs are not inside the x86_64 chroot.
+    info "Registering x86_64 binfmt_misc entry with QEMU (F flag)…"
+    mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc 2>/dev/null || true
+
+    # Only register if not already registered
+    if [[ ! -f /proc/sys/fs/binfmt_misc/qemu-x86_64 ]]; then
+        # Magic bytes explained:
+        #   \x7fELF          – ELF magic number
+        #   \x02             – EI_CLASS=2 (64-bit)
+        #   \x01             – EI_DATA=1 (little-endian)
+        #   \x01             – EI_VERSION=1
+        #   \x00×8           – EI_OSABI + padding
+        #   \x02\x00         – e_type=2 (ET_EXEC, executable)
+        #   \x3e\x00         – e_machine=0x3e (x86-64 / EM_X86_64)
+        # Mask bytes: \xfe on EI_DATA/EI_VERSION allow any ABI byte; \xfe on
+        # e_type allows both ET_EXEC and ET_DYN (shared-library executables).
+        # The 'C' flag treats the interpreter as a credential-preserving
+        # binary; 'F' (fix binary) tells the kernel to open the interpreter
+        # file descriptor before entering the chroot so the ARM64 QEMU binary
+        # is invoked even though its libs are not present in the x86_64 chroot.
+        echo ":qemu-x86_64:M::\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x3e\x00:\xff\xff\xff\xff\xff\xfe\xfe\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff:${QEMU_BIN}:CF" \
+            > /proc/sys/fs/binfmt_misc/register \
+            || warn "binfmt_misc registration failed – chroot may not work; check kernel config."
+    fi
+    info "binfmt_misc: $(cat /proc/sys/fs/binfmt_misc/qemu-x86_64 2>/dev/null | head -1 || echo 'unknown')"
+
+else
+
+    step "Stage 1/6 – Bootstrapping Debian $SUITE"
+
+    mkdir -p "$ROOTFS"
+    debootstrap \
+        --variant=minbase \
+        --include=linux-image-amd64,live-boot,live-boot-initramfs-tools,systemd-sysv \
+        "$SUITE" "$ROOTFS" "$MIRROR"
+
+fi
+
+# ---------------------------------------------------------------------------
+# Stage 2 – Install packages and Nightmare Loader
+# ---------------------------------------------------------------------------
 
 # Prevent services from starting inside the chroot
 cat > "$ROOTFS/usr/sbin/policy-rc.d" <<'EOF'
@@ -110,20 +231,66 @@ exit 101
 EOF
 chmod +x "$ROOTFS/usr/sbin/policy-rc.d"
 
-# Bind-mount kernel pseudo-filesystems so chroot commands work correctly
-for fs in dev dev/pts proc sys run; do
-    mkdir -p "$ROOTFS/$fs"
-    mount --bind "/$fs" "$ROOTFS/$fs"
-done
+setup_mounts
 
-cleanup_mounts() {
-    for fs in run sys proc dev/pts dev; do
-        umount -lf "$ROOTFS/$fs" 2>/dev/null || true
-    done
+pip3_install() {
+    # pip3 on Debian bookworm needs --break-system-packages; older pip won't
+    # recognise the flag so fall back without it.
+    pip3 install --break-system-packages "$@" 2>/dev/null || pip3 install "$@"
 }
-trap cleanup_mounts EXIT
 
-chroot "$ROOTFS" /bin/bash -c "
+if [[ $TERMUX_BUILD -eq 1 ]]; then
+
+    step "Stage 2/6 – Installing Alpine packages and Nightmare Loader (via QEMU)"
+
+    # Write a resolv.conf so apk can reach the network
+    cp /etc/resolv.conf "$ROOTFS/etc/resolv.conf" 2>/dev/null || true
+
+    chroot "$ROOTFS" /bin/sh -c "
+set -e
+# Configure Alpine APK repositories
+cat > /etc/apk/repositories << 'REPOS'
+https://dl-cdn.alpinelinux.org/alpine/v${ALPINE_VERSION%.*}/main
+https://dl-cdn.alpinelinux.org/alpine/v${ALPINE_VERSION%.*}/community
+REPOS
+
+apk update
+apk add --no-cache \
+    linux-lts mkinitfs \
+    python3 py3-pip \
+    parted dosfstools genisoimage \
+    grub grub-bios grub-efi grub-efi-x86_64 \
+    xorriso mtools cpio gzip \
+    bash ca-certificates curl
+
+# Set bash as root's login shell (welcome script needs it)
+sed -i 's|^root:x:0:0:root:/root:/bin/sh\$|root:x:0:0:root:/root:/bin/bash|' /etc/passwd
+
+# Install Nightmare Loader from PyPI
+pip3 install --break-system-packages nightmare-loader 2>/dev/null \
+    || pip3 install nightmare-loader
+
+# Verify
+nightmare-loader --version
+"
+
+    # Install Nightmare Loader from local source tree as well
+    info "Copying Nightmare Loader source into live image…"
+    cp -a "$SCRIPT_DIR" "$ROOTFS/opt/nightmare-loader"
+    chroot "$ROOTFS" /bin/sh -c "
+pip3 install --break-system-packages -e /opt/nightmare-loader 2>/dev/null \
+    || pip3 install -e /opt/nightmare-loader
+"
+
+else
+
+    step "Stage 2/6 – Installing Debian packages and Nightmare Loader"
+
+    cat > "$ROOTFS/etc/apt/sources.list" <<EOF
+deb $MIRROR $SUITE main contrib non-free
+EOF
+
+    chroot "$ROOTFS" /bin/bash -c "
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 
@@ -132,89 +299,145 @@ apt-get install -y --no-install-recommends \
     python3 python3-pip \
     parted dosfstools genisoimage \
     grub-pc-bin grub-efi-amd64-bin grub-common \
-    ca-certificates curl \
-    bash-completion less
+    ca-certificates curl bash-completion less
 
-# pip3 on Debian bookworm requires --break-system-packages when installing
-# outside a virtualenv; older pip versions don't recognise the flag, so fall
-# back without it.
-pip3_install() { pip3 install --break-system-packages \"\$@\" 2>/dev/null || pip3 install \"\$@\"; }
-
-# Install Nightmare Loader
+$(declare -f pip3_install)
 pip3_install nightmare-loader
-
-# Verify installation
 nightmare-loader --version
 "
 
-# Copy the local source tree into the chroot so users can also run from source
-info "Copying Nightmare Loader source into live image..."
-cp -a "$SCRIPT_DIR" "$ROOTFS/opt/nightmare-loader"
-chroot "$ROOTFS" /bin/bash -c "
-pip3_install() { pip3 install --break-system-packages \"\$@\" 2>/dev/null || pip3 install \"\$@\"; }
+    info "Copying Nightmare Loader source into live image…"
+    cp -a "$SCRIPT_DIR" "$ROOTFS/opt/nightmare-loader"
+    chroot "$ROOTFS" /bin/bash -c "
+$(declare -f pip3_install)
 pip3_install -e /opt/nightmare-loader
 "
 
+fi
+
 # ---------------------------------------------------------------------------
-# Stage 3 – Apply iso_root overlay (auto-login, welcome script, profile)
+# Stage 3 – Apply iso_root overlay + platform-specific boot configuration
 # ---------------------------------------------------------------------------
 
-step "Stage 3/6 – Applying iso_root overlay"
+step "Stage 3/6 – Applying overlay and configuring live boot"
 
 ISO_ROOT_SRC="$SCRIPT_DIR/iso_root"
 if [[ -d "$ISO_ROOT_SRC" ]]; then
     cp -a "$ISO_ROOT_SRC/." "$ROOTFS/"
     info "Overlay applied from $ISO_ROOT_SRC"
 else
-    warn "iso_root/ directory not found – skipping overlay"
+    warn "iso_root/ not found – skipping overlay"
 fi
 
-# Set root password to empty (the live image is ephemeral)
-chroot "$ROOTFS" /bin/bash -c "passwd -d root"
+# Ensure root has no password (ephemeral live image)
+chroot "$ROOTFS" /bin/sh -c "passwd -d root" 2>/dev/null || true
 
-# Hostname for the live system
 echo "nightmare-loader-live" > "$ROOTFS/etc/hostname"
 
-# Disable the policy-rc.d blocker now that we're done installing packages
+if [[ $TERMUX_BUILD -eq 1 ]]; then
+    # Alpine uses BusyBox inittab; configure autologin for root on tty1.
+    # /bin/login -f root skips the password check for root.
+    if [[ -f "$ROOTFS/etc/inittab" ]]; then
+        # Match the exact tty1 getty line format Alpine ships in its minirootfs
+        # to avoid accidentally clobbering unrelated inittab entries.
+        sed -i 's|tty1::respawn:/sbin/getty.*|tty1::respawn:/bin/login -f root|' "$ROOTFS/etc/inittab"
+    else
+        echo "tty1::respawn:/bin/login -f root" >> "$ROOTFS/etc/inittab"
+    fi
+    info "Alpine autologin configured in /etc/inittab"
+
+    # ── Configure mkinitfs for live squashfs boot ──────────────────────────
+    # Create a custom feature that adds the drivers needed by
+    # nightmare-live-init.sh to find and mount the live medium.
+    mkdir -p "$ROOTFS/etc/mkinitfs/features.d"
+    cat > "$ROOTFS/etc/mkinitfs/features.d/nightmare-live.modules" << 'FEAT'
+kernel/drivers/block/loop.ko*
+kernel/fs/squashfs/squashfs.ko*
+kernel/fs/isofs/isofs.ko*
+kernel/fs/overlayfs/overlay.ko*
+FEAT
+
+    cat > "$ROOTFS/etc/mkinitfs/mkinitfs.conf" << 'MCONF'
+features="base squashfs nightmare-live"
+MCONF
+    info "mkinitfs configured with nightmare-live feature"
+else
+    info "Debian/systemd autologin already provided by iso_root overlay"
+fi
+
 rm -f "$ROOTFS/usr/sbin/policy-rc.d"
 
-# Remove APT caches to trim image size
-chroot "$ROOTFS" /bin/bash -c "
-apt-get clean
-rm -rf /var/lib/apt/lists/*
-"
+# Trim APT / APK caches
+if [[ $TERMUX_BUILD -eq 1 ]]; then
+    chroot "$ROOTFS" /bin/sh  -c "rm -rf /var/cache/apk/*"
+else
+    chroot "$ROOTFS" /bin/bash -c "apt-get clean && rm -rf /var/lib/apt/lists/*"
+fi
 
 cleanup_mounts
-trap - EXIT
 
 # ---------------------------------------------------------------------------
-# Stage 4 – Create the SquashFS live filesystem
+# Stage 4 – SquashFS + kernel/initrd
 # ---------------------------------------------------------------------------
 
-step "Stage 4/6 – Creating SquashFS (this may take a few minutes)"
+step "Stage 4/6 – Creating SquashFS and extracting kernel/initrd"
 
 mkdir -p "$ISO_STAGE/live"
+
 mksquashfs "$ROOTFS" "$ISO_STAGE/live/filesystem.squashfs" \
-    -comp xz -noappend -e "$ROOTFS/proc/*" -e "$ROOTFS/sys/*" \
-    -e "$ROOTFS/dev/*" -e "$ROOTFS/run/*" -e "$ROOTFS/tmp/*"
+    -comp xz -noappend \
+    -e boot \
+    -e proc -e sys -e dev -e run -e tmp
 
-# Copy kernel and initrd from the bootstrapped root
-VMLINUZ="$(ls "$ROOTFS/boot/vmlinuz-"* | sort | tail -1)"
-INITRD="$(ls  "$ROOTFS/boot/initrd.img-"* | sort | tail -1)"
+info "Squash: $(du -sh "$ISO_STAGE/live/filesystem.squashfs" | cut -f1)"
 
-[[ -f "$VMLINUZ" ]] || die "vmlinuz not found in $ROOTFS/boot/"
-[[ -f "$INITRD"  ]] || die "initrd not found in $ROOTFS/boot/"
+if [[ $TERMUX_BUILD -eq 1 ]]; then
+    # ── Alpine kernel ──────────────────────────────────────────────────────
+    VMLINUZ="$(ls "$ROOTFS/boot/vmlinuz-lts" 2>/dev/null || ls "$ROOTFS/boot/vmlinuz-"* 2>/dev/null | sort | tail -1)"
+    [[ -f "$VMLINUZ" ]] || die "vmlinuz not found in $ROOTFS/boot/"
+    cp "$VMLINUZ" "$ISO_STAGE/live/vmlinuz"
+    info "Kernel: $VMLINUZ"
 
-cp "$VMLINUZ" "$ISO_STAGE/live/vmlinuz"
-cp "$INITRD"  "$ISO_STAGE/live/initrd.img"
+    # ── Custom initramfs via mkinitfs -i ───────────────────────────────────
+    # Copy the live-boot init script into the chroot where mkinitfs can see it.
+    INIT_SRC="$SCRIPT_DIR/iso_root/usr/local/bin/nightmare-live-init.sh"
+    [[ -f "$INIT_SRC" ]] \
+        || die "nightmare-live-init.sh not found at $INIT_SRC"
+    cp "$INIT_SRC" "$ROOTFS/tmp/nightmare-live-init.sh"
+    chmod +x "$ROOTFS/tmp/nightmare-live-init.sh"
 
-info "Kernel : $VMLINUZ"
-info "Initrd : $INITRD"
-info "Squash : $(du -sh "$ISO_STAGE/live/filesystem.squashfs" | cut -f1)"
+    # Re-mount for the mkinitfs chroot run
+    setup_mounts
+
+    KVER="$(ls "$ROOTFS/lib/modules/" | sort | tail -1)"
+    [[ -n "$KVER" ]] || die "No kernel modules found in $ROOTFS/lib/modules/"
+    info "Building initramfs for kernel $KVER …"
+
+    chroot "$ROOTFS" /bin/sh -c "
+mkinitfs -i /tmp/nightmare-live-init.sh \
+         -o /boot/initramfs-nightmare \
+         '$KVER'
+"
+    cp "$ROOTFS/boot/initramfs-nightmare" "$ISO_STAGE/live/initrd.img"
+    info "Initrd: $(du -sh "$ISO_STAGE/live/initrd.img" | cut -f1)"
+
+    cleanup_mounts
+
+else
+    # ── Debian kernel + live-boot initrd ──────────────────────────────────
+    VMLINUZ="$(ls "$ROOTFS/boot/vmlinuz-"* 2>/dev/null | sort | tail -1)"
+    INITRD="$(ls  "$ROOTFS/boot/initrd.img-"* 2>/dev/null | sort | tail -1)"
+    [[ -f "$VMLINUZ" ]] || die "vmlinuz not found in $ROOTFS/boot/"
+    [[ -f "$INITRD"  ]] || die "initrd not found in $ROOTFS/boot/"
+    cp "$VMLINUZ" "$ISO_STAGE/live/vmlinuz"
+    cp "$INITRD"  "$ISO_STAGE/live/initrd.img"
+    info "Kernel: $VMLINUZ"
+    info "Initrd: $INITRD"
+fi
 
 # ---------------------------------------------------------------------------
-# Stage 5 – Install the Nightmare Loader GRUB theme (the preloader) and
-#            write the live ISO's GRUB configuration.
+# Stage 5 – Install the Nightmare Loader GRUB preloader theme and write
+#            the live ISO's GRUB configuration.
 #
 # The themed pre-loader is a core part of the Nightmare Loader identity: it
 # shows the dark matrix-inspired "NIGHTMARE LOADER" splash (red title, green
@@ -227,23 +450,34 @@ info "Squash : $(du -sh "$ISO_STAGE/live/filesystem.squashfs" | cut -f1)"
 
 step "Stage 5/6 – Installing preloader theme and writing GRUB configuration"
 
-# The theme is mandatory – abort loudly if it is missing so the build never
-# silently ships an ISO without the Nightmare Loader branded pre-loader.
+# The theme is mandatory – abort loudly if missing so the build never ships
+# an ISO without the Nightmare Loader branded pre-loader.
 THEME_SRC="$SCRIPT_DIR/nightmare_loader/theme/theme.txt"
 [[ -f "$THEME_SRC" ]] \
-    || die "Nightmare Loader GRUB theme not found at $THEME_SRC – cannot build ISO without the preloader."
+    || die "Nightmare Loader GRUB theme not found at $THEME_SRC – cannot build without the preloader."
 
 THEME_DEST="$ISO_STAGE/boot/grub/themes/nightmare"
 mkdir -p "$THEME_DEST"
 cp "$THEME_SRC" "$THEME_DEST/theme.txt"
 info "Preloader theme installed → $THEME_DEST/theme.txt"
 
-# Build the grub.cfg with the theme activated from the first line that can
-# activate it.  This mirrors the _make_header() function in grub.py exactly,
-# adjusted for ISO paths (no `search` by label is needed since grub-mkrescue
-# sets $root correctly for the CD/USB it was loaded from).
+# Boot parameters differ by path:
+#   Debian:  live-boot reads 'boot=live'; '---' separates kernel params from
+#            init params (standard Debian live convention).
+#   Alpine:  our custom init needs no special params; 'modules=' list ensures
+#            the squashfs and loop drivers are loaded early.
+if [[ $TERMUX_BUILD -eq 1 ]]; then
+    BOOT_PARAMS="quiet modules=loop,squashfs,sd-mod,usb-storage"
+    BOOT_PARAMS_VERBOSE="modules=loop,squashfs,sd-mod,usb-storage"
+    BOOT_PARAMS_SAFE="nomodeset modules=loop,squashfs,sd-mod,usb-storage"
+else
+    BOOT_PARAMS="boot=live quiet splash ---"
+    BOOT_PARAMS_VERBOSE="boot=live"
+    BOOT_PARAMS_SAFE="boot=live nomodeset"
+fi
+
 mkdir -p "$ISO_STAGE/boot/grub"
-cat > "$ISO_STAGE/boot/grub/grub.cfg" <<'GRUBCFG'
+cat > "$ISO_STAGE/boot/grub/grub.cfg" <<GRUBCFG
 # Nightmare Loader – Live ISO boot menu
 # Auto-generated by build_iso.sh – do not edit by hand.
 
@@ -261,24 +495,24 @@ insmod gfxterm
 # so the branded splash is shown before the menu appears.  Falls back silently
 # to text mode on systems that do not support graphical output (mirrors the
 # behaviour of the GRUB config installed on prepared USB drives).
-if loadfont ($root)/boot/grub/fonts/unicode.pf2; then
+if loadfont (\$root)/boot/grub/fonts/unicode.pf2; then
     set gfxmode=auto
     terminal_output gfxterm
-    set theme=($root)/boot/grub/themes/nightmare/theme.txt
+    set theme=(\$root)/boot/grub/themes/nightmare/theme.txt
 fi
 
 menuentry "Nightmare Loader Live" {
-    linux   /live/vmlinuz boot=live quiet splash ---
+    linux   /live/vmlinuz $BOOT_PARAMS
     initrd  /live/initrd.img
 }
 
 menuentry "Nightmare Loader Live (verbose boot)" {
-    linux   /live/vmlinuz boot=live
+    linux   /live/vmlinuz $BOOT_PARAMS_VERBOSE
     initrd  /live/initrd.img
 }
 
-menuentry "Nightmare Loader Live (safe mode – nomodeset)" {
-    linux   /live/vmlinuz boot=live nomodeset
+menuentry "Nightmare Loader Live (safe mode - nomodeset)" {
+    linux   /live/vmlinuz $BOOT_PARAMS_SAFE
     initrd  /live/initrd.img
 }
 
@@ -298,22 +532,58 @@ info "GRUB configuration written with preloader theme active"
 
 # ---------------------------------------------------------------------------
 # Stage 6 – Package everything into a hybrid BIOS+UEFI ISO
+#
+# Termux:  grub-mkrescue runs INSIDE the Alpine x86_64 chroot via QEMU so
+#          the genuine x86_64 GRUB module tree is used.  The ISO staging
+#          directory is bind-mounted into the chroot.
+# Linux:   grub-mkrescue runs natively on the host.
+#
+# --fonts=unicode embeds the unicode.pf2 bitmap font so the loadfont call
+# in grub.cfg succeeds and the graphical preloader theme is displayed.
 # ---------------------------------------------------------------------------
 
 step "Stage 6/6 – Building hybrid ISO with grub-mkrescue"
 
-# --fonts=unicode embeds the unicode.pf2 bitmap font into the image so
-# `loadfont ($root)/boot/grub/fonts/unicode.pf2` in grub.cfg succeeds and the
-# graphical preloader theme is actually displayed at boot.
+if [[ $TERMUX_BUILD -eq 1 ]]; then
+
+    # Bind-mount the ISO staging dir and the output directory into the chroot
+    # so grub-mkrescue can read the ISO tree and write the output file.
+    OUTPUT_DIR="$(dirname "$OUTPUT_ISO")"
+    mkdir -p "$OUTPUT_DIR"
+    mkdir -p "$ROOTFS/mnt/iso-stage" "$ROOTFS/mnt/iso-out"
+    mount --bind "$ISO_STAGE"    "$ROOTFS/mnt/iso-stage"
+    mount --bind "$OUTPUT_DIR"   "$ROOTFS/mnt/iso-out"
+
+    OUTPUT_BASENAME="$(basename "$OUTPUT_ISO")"
+
+    chroot "$ROOTFS" /bin/sh -c "
 grub-mkrescue \
-    --output="$OUTPUT_ISO" \
+    --output=/mnt/iso-out/${OUTPUT_BASENAME} \
     --fonts=unicode \
-    "$ISO_STAGE" \
+    /mnt/iso-stage \
     -- \
-    -volid "NIGHTMARE-LIVE" \
+    -volid 'NIGHTMARE-LIVE' \
     -iso-level 3 \
     -rock \
     -joliet
+"
+    umount "$ROOTFS/mnt/iso-stage" 2>/dev/null || true
+    umount "$ROOTFS/mnt/iso-out"   2>/dev/null || true
+
+else
+
+    # --fonts=unicode embeds the unicode.pf2 bitmap font into the image.
+    grub-mkrescue \
+        --output="$OUTPUT_ISO" \
+        --fonts=unicode \
+        "$ISO_STAGE" \
+        -- \
+        -volid "NIGHTMARE-LIVE" \
+        -iso-level 3 \
+        -rock \
+        -joliet
+
+fi
 
 SIZE="$(du -sh "$OUTPUT_ISO" | cut -f1)"
 
@@ -325,14 +595,11 @@ echo "  ISO  : $OUTPUT_ISO"
 echo "  Size : $SIZE"
 echo
 echo " To write to a USB drive:"
-echo "   sudo dd if=$OUTPUT_ISO of=/dev/sdX bs=4M status=progress conv=fsync"
+echo "   sudo dd if=\"$OUTPUT_ISO\" of=/dev/sdX bs=4M status=progress conv=fsync"
 echo
 echo " To use from your phone:"
 echo "   • EtchDroid (no root): copy the ISO to your phone, plug in a USB"
-echo "     drive via OTG, write the ISO to the drive, then boot any PC from it."
+echo "     drive via OTG, write the ISO, then boot any PC from it."
 echo "   • DriveDroid (root required): serve the ISO directly from your phone"
 echo "     as a virtual USB drive – no physical USB stick needed."
 echo -e "${GREEN}============================================================${RESET}"
-
-# Clean up staging area
-rm -rf "$STAGING"
