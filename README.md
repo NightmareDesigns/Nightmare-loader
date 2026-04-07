@@ -215,7 +215,9 @@ GRUB is installed twice:
 Nightmare Loader runs on Android via [Termux](https://termux.dev/) (install
 from **F-Droid** or GitHub Releases, **not** the outdated Play Store version).
 
-Run the one-shot setup script to install all dependencies:
+Run the all-in-one setup script to install every dependency — runtime tools,
+ISO build tools, `tsu` (root helper), and the Nightmare Loader package itself
+— in a single pass:
 
 ```bash
 bash setup_android.sh
@@ -257,11 +259,10 @@ nightmare-loader update /dev/sda --mount-point /storage/ABCD-1234
 
 ### With root (rooted device)
 
-Install `tsu` (the Termux root helper) and prefix commands with `tsu -c`:
+`tsu` (the Termux root helper) is installed by `setup_android.sh`
+automatically.  Prefix commands with `tsu -c`:
 
 ```bash
-pkg install tsu
-
 # Prepare a drive (wipes data!)
 tsu -c 'nightmare-loader prepare /dev/sda'
 
@@ -272,13 +273,21 @@ tsu -c 'nightmare-loader add /dev/sda ubuntu.iso'
 ### Building a bootable live ISO from Termux
 
 On a **rooted** device you can build the full Nightmare Loader live ISO
-directly from Termux — no Linux PC needed:
+directly from Termux — no Linux PC needed.  `setup_android.sh` installs all
+required build tools, so if you've already run it you can build immediately:
 
 ```bash
-# Install build dependencies
-pkg install squashfs-tools xorriso mtools curl cpio gzip qemu-user-x86-64
+# All-in-one setup (runtime + build tools + tsu, if not done yet)
+bash setup_android.sh
 
-# Build the ISO (saves to /sdcard for easy access from Android)
+# Build the ISO – nightmare-loader build-iso auto-detects Termux
+# and invokes tsu for you (saves to /sdcard for easy access from Android)
+nightmare-loader build-iso --output /sdcard/nightmare-loader-live.iso
+```
+
+Or invoke the build script directly:
+
+```bash
 tsu -c 'bash build_iso.sh --output /sdcard/nightmare-loader-live.iso'
 ```
 
@@ -345,11 +354,17 @@ nightmare-loader build-iso --output ~/Downloads/nightmare-loader-live.iso
 `build_iso.sh` auto-detects Termux and switches to an Alpine Linux x86_64
 base with QEMU user-mode emulation — no Linux PC needed.
 
-```bash
-# Install the extra build tools once
-pkg install squashfs-tools xorriso mtools curl cpio gzip qemu-user-x86-64
+Run `setup_android.sh` once to get everything installed (all build tools +
+`tsu` + Nightmare Loader), then build:
 
-# Build (requires root via tsu; takes ~10–20 minutes on most phones)
+```bash
+# All-in-one setup (skip if already done)
+bash setup_android.sh
+
+# Build using the nightmare-loader command (handles tsu elevation automatically)
+nightmare-loader build-iso --output /sdcard/nightmare-loader-live.iso
+
+# Or invoke the script directly via tsu
 tsu -c 'bash build_iso.sh --output /sdcard/nightmare-loader-live.iso'
 ```
 
