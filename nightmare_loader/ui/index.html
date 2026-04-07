@@ -42,6 +42,56 @@
       pointer-events: none;
     }
 
+    /* ── Nightmare visual effects overlay ──────────────────────────── */
+    #vignette {
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(ellipse at center, transparent 0%, rgba(0,0,0,0.7) 100%);
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    #scanlines {
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,255,65,0.02) 2px,
+        rgba(0,255,65,0.02) 4px
+      );
+      pointer-events: none;
+      z-index: 2;
+      opacity: 0.4;
+      animation: scanline-flicker 0.15s steps(2, end) infinite;
+    }
+
+    @keyframes scanline-flicker {
+      0%, 100% { opacity: 0.4; }
+      50% { opacity: 0.35; }
+    }
+
+    #glitch-overlay {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 3;
+      mix-blend-mode: screen;
+      opacity: 0;
+      transition: opacity 0.1s;
+    }
+
+    .glitch-active #glitch-overlay {
+      opacity: 0.3;
+      animation: glitch-pulse 0.2s;
+    }
+
+    @keyframes glitch-pulse {
+      0%, 100% { opacity: 0; }
+      50% { opacity: 0.5; }
+    }
+
     /* ── App wrapper ───────────────────────────────────────────────── */
     #app {
       position: relative;
@@ -76,10 +126,49 @@
         0 0 8px  #ff0000,
         0 0 20px #ff000088,
         0 0 40px #cc000044,
-        2px 3px 6px #000;
+        0 0 60px #990000,
+        2px 3px 6px #000,
+        -2px 0 4px rgba(255,0,0,0.5);
       user-select: none;
       position: relative;
       z-index: 2;
+      animation: title-pulse 4s ease-in-out infinite, title-glitch 8s steps(1, end) infinite;
+    }
+
+    @keyframes title-pulse {
+      0%, 100% {
+        text-shadow:
+          0 0 8px  #ff0000,
+          0 0 20px #ff000088,
+          0 0 40px #cc000044,
+          0 0 60px #990000,
+          2px 3px 6px #000,
+          -2px 0 4px rgba(255,0,0,0.5);
+      }
+      50% {
+        text-shadow:
+          0 0 15px #ff0000,
+          0 0 30px #ff0000aa,
+          0 0 50px #cc000066,
+          0 0 80px #990000,
+          2px 3px 6px #000,
+          -2px 0 6px rgba(255,0,0,0.7);
+      }
+    }
+
+    @keyframes title-glitch {
+      0%, 90%, 92%, 94%, 100% {
+        transform: translate(0, 0);
+        filter: none;
+      }
+      91% {
+        transform: translate(-2px, 0);
+        filter: hue-rotate(90deg);
+      }
+      93% {
+        transform: translate(2px, 0);
+        filter: hue-rotate(-90deg);
+      }
     }
 
     /* Blood drip elements are injected by JS below #title-wrap */
@@ -92,6 +181,8 @@
       transform-origin: top center;
       pointer-events: none;
       z-index: 1;
+      box-shadow: 0 0 3px rgba(255,0,0,0.5), 0 0 8px rgba(139,0,0,0.3);
+      filter: blur(0.3px);
     }
     .b-drop {
       position: absolute;
@@ -99,6 +190,16 @@
       background: radial-gradient(ellipse at 35% 30%, #ff4422, var(--red-dark));
       pointer-events: none;
       z-index: 1;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.5), 0 0 6px rgba(255,0,0,0.4);
+    }
+    .b-splatter {
+      position: absolute;
+      background: var(--red-dark);
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 1;
+      opacity: 0.8;
+      box-shadow: 0 0 2px rgba(0,0,0,0.5);
     }
 
     #subtitle {
@@ -567,6 +668,11 @@
 <!-- Matrix canvas -->
 <canvas id="matrix-canvas"></canvas>
 
+<!-- Nightmare visual effects -->
+<div id="vignette"></div>
+<div id="scanlines"></div>
+<div id="glitch-overlay"></div>
+
 <div id="app">
 
   <!-- ── HEADER ────────────────────────────────────────────────────── -->
@@ -800,19 +906,20 @@
 
 <script>
 /* ═══════════════════════════════════════════════════════════════════
-   MATRIX RAIN
+   MATRIX RAIN (ENHANCED)
 ═══════════════════════════════════════════════════════════════════ */
 (function () {
   const canvas = document.getElementById('matrix-canvas');
   const ctx = canvas.getContext('2d');
 
-  // Katakana block + ASCII symbols + numbers
+  // Katakana block + ASCII symbols + numbers + special chars
   const CHARS =
     'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン' +
-    'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*<>?/\\|';
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*<>?/\\|†‡§¶∞' +
+    '日月火水木金土本一二三四五六七八九十百千万円';
 
   const FONT_SIZE = 14;
-  let cols, drops, speeds, bright;
+  let cols, drops, speeds, bright, colors, phase;
 
   function resize() {
     canvas.width  = window.innerWidth;
@@ -821,13 +928,17 @@
     drops  = Array.from({ length: cols }, () => Math.random() * -canvas.height / FONT_SIZE);
     speeds = Array.from({ length: cols }, () => 0.4 + Math.random() * 1.2);
     bright = Array.from({ length: cols }, () => Math.random() > 0.92);
+    colors = Array.from({ length: cols }, () => Math.random()); // color variation per column
+    phase  = Array.from({ length: cols }, () => Math.random() * Math.PI * 2); // phase offset for pulsing
   }
 
   resize();
   window.addEventListener('resize', resize);
 
+  let frame = 0;
+
   function draw() {
-    // Faint black overlay → trail effect
+    // Faint black overlay → trail effect with slight color variation
     ctx.fillStyle = 'rgba(0,0,0,0.055)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -837,15 +948,23 @@
       const y = Math.floor(drops[i]) * FONT_SIZE;
       const ch = CHARS[Math.floor(Math.random() * CHARS.length)];
 
+      // Pulsing effect based on time and phase offset
+      const pulse = Math.sin(frame * 0.02 + phase[i]) * 0.5 + 0.5;
+
       if (bright[i]) {
-        // Leading character: white-green
-        ctx.fillStyle = '#ccffcc';
+        // Leading character: white-green with glow and pulsing
+        const glowIntensity = 0.7 + pulse * 0.3;
+        ctx.fillStyle = `rgba(${Math.floor(200 + 55 * glowIntensity)},255,${Math.floor(200 + 55 * glowIntensity)},${glowIntensity})`;
         ctx.shadowColor = '#00ff41';
-        ctx.shadowBlur = 8;
+        ctx.shadowBlur = 8 + pulse * 4;
       } else {
-        // Column body: varying green shades
-        const intensity = 0.5 + 0.5 * Math.random();
-        ctx.fillStyle = `rgba(0,${Math.floor(180 + 75 * intensity)},${Math.floor(40 * intensity)},${intensity})`;
+        // Column body: varying green shades with color variation
+        const intensity = 0.5 + 0.5 * colors[i];
+        const red = Math.floor(10 * (1 - intensity));
+        const green = Math.floor(180 + 75 * intensity * (0.8 + pulse * 0.2));
+        const blue = Math.floor(40 * intensity);
+        const alpha = intensity * (0.8 + pulse * 0.2);
+        ctx.fillStyle = `rgba(${red},${green},${blue},${alpha})`;
         ctx.shadowBlur = 0;
       }
 
@@ -854,12 +973,17 @@
 
       drops[i] += speeds[i];
 
+      // Reset drops with random chance and update properties
       if (y > canvas.height && Math.random() > 0.975) {
         drops[i]  = Math.random() * -20;
         speeds[i] = 0.4 + Math.random() * 1.2;
         bright[i] = Math.random() > 0.92;
+        colors[i] = Math.random();
+        phase[i]  = Math.random() * Math.PI * 2;
       }
     }
+
+    frame++;
   }
 
   setInterval(draw, 40);
@@ -867,7 +991,7 @@
 
 
 /* ═══════════════════════════════════════════════════════════════════
-   BLOOD DRIP ANIMATION
+   BLOOD DRIP ANIMATION (ENHANCED)
 ═══════════════════════════════════════════════════════════════════ */
 (function () {
   const wrap = document.getElementById('title-wrap');
@@ -875,6 +999,31 @@
   const POOL = [];  // active drip objects
 
   function rnd(min, max) { return min + Math.random() * (max - min); }
+
+  function createSplatter(x, y, baseSize) {
+    // Create multiple small splatter particles
+    const numSplatters = Math.floor(rnd(3, 8));
+    for (let i = 0; i < numSplatters; i++) {
+      const splatter = document.createElement('div');
+      splatter.className = 'b-splatter';
+      const size = rnd(baseSize * 0.3, baseSize * 0.8);
+      const offsetX = rnd(-baseSize * 2, baseSize * 2);
+      const offsetY = rnd(-baseSize * 0.5, baseSize * 1.5);
+      splatter.style.cssText = `left:${x + offsetX}px; top:${y + offsetY}px; width:${size}px; height:${size}px;`;
+      wrap.appendChild(splatter);
+
+      // Fade out and remove splatter
+      let opacity = 0.8;
+      const fadeInterval = setInterval(() => {
+        opacity -= 0.05;
+        splatter.style.opacity = opacity;
+        if (opacity <= 0) {
+          clearInterval(fadeInterval);
+          splatter.remove();
+        }
+      }, 60);
+    }
+  }
 
   function spawnDrip() {
     const titleRect = titleEl.getBoundingClientRect();
@@ -890,14 +1039,15 @@
     stalk.style.cssText = `left:${x}px; width:${w}px; height:0px;`;
     wrap.appendChild(stalk);
 
-    const maxLen   = rnd(18, 55);
-    const growRate = rnd(0.25, 0.7);  // px per frame
+    const maxLen   = rnd(18, 65);
+    const growRate = rnd(0.25, 0.8);  // px per frame
 
     let len = 0;
     let phase = 'grow';
     let dropY = 0;
     let dropEl = null;
     let dropOpacity = 1;
+    let dropSpeed = rnd(1.5, 3.5);
 
     function tick() {
       if (phase === 'grow') {
@@ -918,11 +1068,21 @@
         // Stalk retracts
         len = Math.max(0, len - growRate * 0.8);
         stalk.style.height = len + 'px';
-        // Drop falls
-        dropY += rnd(1.5, 3.5);
-        dropOpacity = Math.max(0, 1 - dropY / rnd(80, 140));
+        // Drop falls with acceleration
+        dropSpeed += 0.15; // gravity acceleration
+        dropY += dropSpeed;
+        dropOpacity = Math.max(0, 1 - dropY / rnd(80, 160));
         dropEl.style.top   = `calc(100% + ${parseFloat(stalk.style.height) + dropY}px)`;
         dropEl.style.opacity = dropOpacity;
+
+        // Check if drop should splatter (traveled far enough)
+        if (dropY > 50 && dropOpacity > 0.2 && Math.random() > 0.98) {
+          // Create splatter effect
+          createSplatter(x, titleRect.height + len + dropY, w * 2);
+          // Immediately fade out the drop
+          dropOpacity = 0;
+        }
+
         if (dropOpacity <= 0) {
           stalk.remove();
           dropEl.remove();
@@ -938,7 +1098,7 @@
   // Continuously spawn drips at random intervals
   function scheduleNext() {
     spawnDrip();
-    setTimeout(scheduleNext, rnd(180, 800));
+    setTimeout(scheduleNext, rnd(150, 700));
   }
 
   // Wait a moment for layout to stabilise, then start
@@ -1382,6 +1542,56 @@ function renderInspectResult(meta) {
       <tr><td>Cmdline</td><td style="word-break:break-all;font-size:0.7rem">${meta.cmdline || '—'}</td></tr>
     </table>`;
 }
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   GLITCH EFFECT TRIGGER
+═══════════════════════════════════════════════════════════════════ */
+(function () {
+  const glitchOverlay = document.getElementById('glitch-overlay');
+
+  function triggerGlitch() {
+    // Add random colored bars
+    const numBars = Math.floor(Math.random() * 3) + 2;
+    glitchOverlay.innerHTML = '';
+
+    for (let i = 0; i < numBars; i++) {
+      const bar = document.createElement('div');
+      const height = Math.random() * 3 + 1;
+      const top = Math.random() * 100;
+      const color = Math.random() > 0.5 ? 'rgba(255,0,0,0.5)' : 'rgba(0,255,65,0.5)';
+      bar.style.cssText = `
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: ${top}%;
+        height: ${height}px;
+        background: ${color};
+      `;
+      glitchOverlay.appendChild(bar);
+    }
+
+    // Trigger glitch class
+    document.body.classList.add('glitch-active');
+
+    setTimeout(() => {
+      document.body.classList.remove('glitch-active');
+      setTimeout(() => {
+        glitchOverlay.innerHTML = '';
+      }, 100);
+    }, 150);
+  }
+
+  // Random glitch every 8-15 seconds
+  function scheduleGlitch() {
+    setTimeout(() => {
+      triggerGlitch();
+      scheduleGlitch();
+    }, 8000 + Math.random() * 7000);
+  }
+
+  scheduleGlitch();
+})();
 
 
 /* ═══════════════════════════════════════════════════════════════════
