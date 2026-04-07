@@ -1,0 +1,51 @@
+# Dockerfile.iso-builder
+# Reproducible build environment for the Nightmare Loader live ISO.
+#
+# Builds a hybrid BIOS+UEFI bootable ISO containing Nightmare Loader and all
+# its runtime dependencies.  The resulting ISO can be stored on a phone and
+# written to a USB drive with EtchDroid (no root required on Android), or
+# served directly as a virtual USB device via DriveDroid (root required).
+#
+# Usage:
+#   docker build -t nightmare-iso-builder -f Dockerfile.iso-builder .
+#   docker run --rm --privileged \
+#       -v "$(pwd)":/out \
+#       nightmare-iso-builder
+#
+# The ISO is written to ./nightmare-loader-live.iso on the host.
+#
+# --privileged is required because build_iso.sh uses debootstrap (which in
+# turn runs chroot) and mounts kernel pseudo-filesystems inside the chroot.
+
+FROM debian:bookworm-slim
+
+LABEL org.opencontainers.image.title="Nightmare Loader ISO Builder"
+LABEL org.opencontainers.image.description="Builds the Nightmare Loader bootable live ISO"
+
+# Install all tools needed by build_iso.sh
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        # Bootstrap tool for the live rootfs
+        debootstrap \
+        # SquashFS creator
+        squashfs-tools \
+        # ISO packager (hybrid BIOS+UEFI via grub-mkrescue)
+        grub-pc-bin \
+        grub-efi-amd64-bin \
+        grub2-common \
+        xorriso \
+        mtools \
+        # Needed by debootstrap when running inside Docker
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+
+# Copy the entire repository into the image
+COPY . .
+
+# Ensure the build script is executable
+RUN chmod +x build_iso.sh
+
+# Write the ISO to /out/nightmare-loader-live.iso so it can be bind-mounted
+# out to the host with -v "$(pwd)":/out
+CMD ["./build_iso.sh", "--output", "/out/nightmare-loader-live.iso"]

@@ -281,6 +281,75 @@ to launch the web UI.
 
 ---
 
+## Bootable Live ISO (use from your phone)
+
+Nightmare Loader can be built into a **hybrid BIOS + UEFI bootable live ISO**.
+Store the ISO on your phone and use it to create multi-ISO USB drives on any
+PC — no Linux installation required on the target machine.
+
+The ISO boots with the same **Nightmare Loader themed preloader** (dark matrix
+splash, red title, green menu) that appears on every USB drive prepared by
+Nightmare Loader, then drops into a root shell showing the quick-start banner.
+
+### Building the ISO
+
+#### Option A – native Linux host (requires root)
+
+```bash
+# Install build tools (Debian/Ubuntu)
+sudo apt install debootstrap squashfs-tools grub-pc-bin grub-efi-amd64-bin xorriso mtools
+
+# Build (takes ~5–10 minutes; root required for debootstrap/chroot)
+sudo ./build_iso.sh
+
+# Custom output path
+sudo ./build_iso.sh --output ~/Downloads/nightmare-loader-live.iso
+```
+
+#### Option B – Docker (no root on the host)
+
+```bash
+docker build -t nightmare-iso-builder -f Dockerfile.iso-builder .
+docker run --rm --privileged \
+    -v "$(pwd)":/out \
+    nightmare-iso-builder
+# → nightmare-loader-live.iso appears in the current directory
+```
+
+`--privileged` is required because the build runs `debootstrap` + `chroot`
+inside the container.
+
+### Using the ISO from your Android phone
+
+| Method | Root required? | How |
+|--------|---------------|-----|
+| **EtchDroid** | No | Copy the ISO to your phone. Plug in a USB drive via OTG. Open EtchDroid, select the ISO, select the USB drive, write. Boot the PC from the written USB drive. |
+| **DriveDroid** | Yes (device) | Copy the ISO to your phone. Add it in DriveDroid as a CD-ROM image. Connect the phone to the PC via USB. The PC boots from the phone directly — no USB drive needed. |
+
+### What the live environment provides
+
+* Full `nightmare-loader` CLI and web UI (`nightmare-loader ui`)
+* All runtime dependencies: `grub-install`, `parted`, `mkfs.fat`, `genisoimage`
+* Auto-login as root on `tty1` — no password prompt
+* Welcome banner with the quick-start workflow printed on every login
+
+### File layout
+
+```
+build_iso.sh               Main build script
+Dockerfile.iso-builder     Docker build environment
+iso_root/                  Overlay applied on top of the live rootfs
+  etc/systemd/system/
+    getty@tty1.service.d/
+      autologin.conf       Auto-login as root on tty1
+  usr/local/bin/
+    nightmare-welcome.sh   Welcome banner shown on login
+  root/
+    .bash_profile          Sources nightmare-welcome.sh on login
+```
+
+---
+
 
 ```bash
 git clone https://github.com/NightmareDesigns/Nightmare-loader.git
