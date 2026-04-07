@@ -42,50 +42,41 @@
       pointer-events: none;
     }
 
-    /* ── App wrapper ───────────────────────────────────────────────── */
-    #app {
+    /* ── Desktop ────────────────────────────────────────────────────── */
+    #desktop {
       position: relative;
       z-index: 10;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 0 16px 48px;
+      width: 100vw;
+      height: calc(100vh - 40px);
+      overflow: hidden;
     }
 
-    /* ── Header / blood title ──────────────────────────────────────── */
-    header {
-      text-align: center;
-      padding: 44px 0 52px;
-      width: 100%;
-    }
-
+    /* Blood drip elements are injected by JS below #title-wrap */
     #title-wrap {
-      position: relative;
+      position: absolute;
+      top: 6px;
+      left: 50%;
+      transform: translateX(-50%);
       display: inline-block;
       line-height: 1;
+      pointer-events: none;
+      z-index: 8;
     }
-
     #title {
       font-family: 'Impact', 'Arial Black', Arial, sans-serif;
-      font-size: clamp(2.6rem, 9vw, 6.5rem);
+      font-size: clamp(1rem, 3vw, 2.2rem);
       font-weight: 900;
       letter-spacing: 0.12em;
       text-transform: uppercase;
-      color: var(--red);
-      text-shadow:
-        0 0 8px  #ff0000,
-        0 0 20px #ff000088,
-        0 0 40px #cc000044,
-        2px 3px 6px #000;
+      color: rgba(180,0,0,0.25);
+      text-shadow: none;
       user-select: none;
       position: relative;
       z-index: 2;
     }
-
-    /* Blood drip elements are injected by JS below #title-wrap */
     .b-drip {
       position: absolute;
-      top: 100%;          /* hangs below title */
+      top: 100%;
       width: 5px;
       border-radius: 0 0 50% 50%;
       background: linear-gradient(to bottom, var(--red-deep) 0%, var(--red-dark) 40%, var(--red) 80%, #ff4400 100%);
@@ -101,68 +92,275 @@
       z-index: 1;
     }
 
-    #subtitle {
-      margin-top: 10px;
-      font-size: 0.78rem;
-      letter-spacing: 0.35em;
-      text-transform: uppercase;
-      color: var(--green-dim);
-      opacity: 0.8;
-    }
-
-    /* ── Layout grid ───────────────────────────────────────────────── */
-    #grid {
-      width: 100%;
-      max-width: 1280px;
-      display: grid;
-      grid-template-columns: repeat(12, 1fr);
-      gap: 14px;
-    }
-
-    /* column spans */
-    .col-4  { grid-column: span 4; }
-    .col-5  { grid-column: span 5; }
-    .col-6  { grid-column: span 6; }
-    .col-7  { grid-column: span 7; }
-    .col-8  { grid-column: span 8; }
-    .col-12 { grid-column: span 12; }
-
-    @media (max-width: 900px) {
-      .col-4, .col-5, .col-6, .col-7, .col-8 { grid-column: span 12; }
-    }
-    @media (min-width: 901px) and (max-width: 1100px) {
-      .col-4 { grid-column: span 6; }
-      .col-5, .col-7 { grid-column: span 6; }
-      .col-8 { grid-column: span 12; }
-    }
-
-    /* ── Panel ─────────────────────────────────────────────────────── */
-    .panel {
-      background: var(--panel-bg);
-      border: 1px solid var(--border);
+    /* ── Platform notification banners (OS-style) ──────────────────── */
+    .os-banner {
+      position: fixed;
+      top: 6px;
+      left: 66px;
+      right: 8px;
+      z-index: 16;
+      padding: 9px 14px;
+      font-size: 0.75rem;
+      letter-spacing: 0.05em;
+      line-height: 1.5;
       border-radius: var(--radius);
-      padding: 18px 20px 20px;
-      backdrop-filter: blur(6px);
-      box-shadow:
-        0 0 18px rgba(139,0,0,0.25),
-        inset 0 0 30px rgba(0,0,0,0.5);
+      display: none;
+    }
+    #priv-banner {
+      background: rgba(100,20,0,0.75);
+      border: 1px solid var(--red-dark);
+      color: #ff9999;
+    }
+    #priv-banner strong { color: #ff4444; }
+    #win-banner {
+      background: rgba(0,30,60,0.75);
+      border: 1px solid rgba(0,100,200,0.5);
+      color: #99ccff;
+    }
+    #win-banner strong { color: #66aaff; }
+    #android-banner {
+      background: rgba(10,40,10,0.75);
+      border: 1px solid rgba(60,180,60,0.45);
+      color: #99ee99;
+    }
+    #android-banner strong { color: #66dd66; }
+    .os-banner code {
+      background: rgba(0,0,0,0.4);
+      border: 1px solid rgba(200,0,0,0.25);
+      border-radius: 2px;
+      padding: 1px 5px;
+      color: var(--green);
+      font-family: 'Courier New', monospace;
+      font-size: 0.85em;
+    }
+
+    /* ── Icon Dock (left strip) ─────────────────────────────────────── */
+    #dock {
+      position: fixed;
+      left: 0; top: 0; bottom: 40px;
+      width: 56px;
+      z-index: 18;
+      background: rgba(0,0,0,0.92);
+      border-right: 1px solid rgba(139,0,0,0.35);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 6px 0;
+      gap: 2px;
+    }
+    .dock-logo {
+      font-family: 'Impact', sans-serif;
+      font-size: 0.95rem;
+      color: var(--red);
+      text-shadow: 0 0 8px #ff0000;
+      text-align: center;
+      padding: 4px 2px 8px;
+      border-bottom: 1px solid rgba(139,0,0,0.3);
+      width: 100%;
+      line-height: 1.1;
+      user-select: none;
+    }
+    .dock-icon {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      padding: 5px 4px;
+      border-radius: 3px;
+      cursor: pointer;
+      width: 52px;
+      transition: background 0.12s;
+      user-select: none;
+      border-left: 2px solid transparent;
+    }
+    .dock-icon:hover  { background: rgba(200,0,0,0.18); }
+    .dock-icon.active { background: rgba(180,0,0,0.12); border-left-color: var(--red); }
+    .dock-icon .di-g  { font-size: 1.25rem; line-height: 1; }
+    .dock-icon .di-l  {
+      font-size: 0.47rem;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: var(--muted);
+      text-align: center;
+    }
+    .dock-icon:hover .di-l  { color: var(--green-dim); }
+    .dock-icon.active .di-l { color: #ff8888; }
+    .dock-sep { width: 28px; height: 1px; background: rgba(139,0,0,0.25); margin: 3px 0; }
+
+    /* ── OS Windows ──────────────────────────────────────────────────── */
+    .os-win {
+      position: absolute;
+      background: rgba(0,0,0,0.90);
+      border: 1px solid rgba(139,0,0,0.6);
+      border-radius: 4px;
+      box-shadow: 0 0 22px rgba(180,0,0,0.3), 0 8px 30px rgba(0,0,0,0.85);
+      backdrop-filter: blur(8px);
+      display: flex;
+      flex-direction: column;
+      min-width: 260px;
+      min-height: 80px;
+      animation: panel-glow 5s ease-in-out infinite;
+    }
+    .os-win.focused {
+      box-shadow: 0 0 36px rgba(200,0,0,0.55), 0 12px 40px rgba(0,0,0,0.9);
+      border-color: rgba(200,0,0,0.75);
+    }
+    .os-win.minimized { display: none !important; }
+
+    .win-bar {
+      background: linear-gradient(135deg, #180000 0%, #2c0000 55%, #180000 100%);
+      border-bottom: 1px solid rgba(139,0,0,0.45);
+      padding: 5px 8px 5px 9px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: grab;
+      user-select: none;
+      border-radius: 3px 3px 0 0;
+      flex-shrink: 0;
+    }
+    .win-bar:active { cursor: grabbing; }
+    .win-bar-icon  { font-size: 0.9rem; flex-shrink: 0; }
+    .win-bar-title {
+      font-size: 0.65rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--red);
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .win-btns { display: flex; gap: 5px; flex-shrink: 0; }
+    .wbtn {
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      border: none; cursor: pointer; padding: 0; font-size: 0;
+      flex-shrink: 0;
+      transition: filter 0.1s;
+    }
+    .wbtn:hover  { filter: brightness(1.5); }
+    .wbtn-min    { background: #b85c00; }
+    .wbtn-close  { background: #b80000; }
+
+    .win-body {
+      flex: 1;
+      padding: 13px 15px 15px;
+      overflow-y: auto;
       display: flex;
       flex-direction: column;
       gap: 12px;
+      scrollbar-width: thin;
+      scrollbar-color: var(--red-dark) transparent;
     }
+    .win-body::-webkit-scrollbar       { width: 4px; }
+    .win-body::-webkit-scrollbar-thumb { background: var(--red-dark); border-radius: 2px; }
 
+    /* ── Panel-title inside win-body ─────────────────────────────────── */
     .panel-title {
-      font-size: 0.72rem;
-      letter-spacing: 0.22em;
+      font-size: 0.7rem;
+      letter-spacing: 0.2em;
       text-transform: uppercase;
       color: var(--red);
-      border-bottom: 1px solid rgba(139,0,0,0.35);
-      padding-bottom: 8px;
+      border-bottom: 1px solid rgba(139,0,0,0.32);
+      padding-bottom: 7px;
       display: flex;
       align-items: center;
       gap: 8px;
     }
     .panel-title .icon { font-size: 1rem; }
+
+    /* ── Gemini chat ─────────────────────────────────────────────────── */
+    .gemini-msgs {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      max-height: 320px;
+      scrollbar-width: thin;
+      scrollbar-color: var(--red-dark) transparent;
+    }
+    .gmsg {
+      font-size: 0.74rem;
+      line-height: 1.55;
+      padding: 7px 10px;
+      border-radius: 4px;
+      max-width: 92%;
+      word-break: break-word;
+      white-space: pre-wrap;
+    }
+    .gmsg-user   { background: rgba(0,55,10,0.45); border: 1px solid rgba(0,140,30,0.3); color: var(--green); align-self: flex-end; }
+    .gmsg-ai     { background: rgba(55,0,0,0.45);  border: 1px solid rgba(139,0,0,0.3);  color: #ffbbbb;       align-self: flex-start; }
+    .gmsg-system { background: rgba(15,15,15,0.45); border: 1px solid #222; color: var(--muted); font-size: 0.65rem; align-self: center; text-align: center; }
+    .gmsg-ai.err { color: #ff5555; }
+
+    /* ── Taskbar (bottom) ────────────────────────────────────────────── */
+    #taskbar {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      height: 40px;
+      z-index: 20;
+      background: rgba(0,0,0,0.96);
+      border-top: 1px solid rgba(139,0,0,0.45);
+      display: flex;
+      align-items: center;
+      padding: 0 10px 0 62px;
+      gap: 5px;
+    }
+    #tb-start {
+      font-family: 'Impact', sans-serif;
+      font-size: 0.8rem;
+      letter-spacing: 0.08em;
+      color: var(--red);
+      text-shadow: 0 0 8px #ff000066;
+      padding: 3px 10px;
+      border: 1px solid rgba(139,0,0,0.4);
+      border-radius: 3px;
+      cursor: pointer;
+      background: rgba(70,0,0,0.3);
+      white-space: nowrap;
+      flex-shrink: 0;
+      transition: background 0.12s;
+      user-select: none;
+    }
+    #tb-start:hover { background: rgba(120,0,0,0.5); }
+    #tb-apps  { display: flex; gap: 3px; flex: 1; overflow: hidden; }
+    .tb-app {
+      font-family: 'Courier New', monospace;
+      font-size: 0.6rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      border-radius: 2px;
+      border: 1px solid rgba(139,0,0,0.25);
+      background: rgba(35,0,0,0.4);
+      color: var(--muted);
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.1s, color 0.1s;
+      max-width: 110px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .tb-app:hover    { background: rgba(70,0,0,0.5); color: var(--green-dim); }
+    .tb-app.open     { background: rgba(90,0,0,0.5); color: var(--green); border-color: rgba(200,0,0,0.4); }
+    .tb-app.minimized{ opacity: 0.5; }
+    #tb-tray {
+      display: flex; align-items: center; gap: 10px;
+      flex-shrink: 0;
+      font-size: 0.6rem;
+      letter-spacing: 0.09em;
+    }
+    .tray-item      { color: var(--muted); }
+    .tray-item span { color: var(--green-dim); }
+    #tray-clock {
+      color: var(--green);
+      font-variant-numeric: tabular-nums;
+      min-width: 66px;
+      text-align: right;
+    }
 
     /* ── Form elements ─────────────────────────────────────────────── */
     label {
@@ -409,101 +607,7 @@
     .pill-red   { background: rgba(80,0,0,0.5);  border: 1px solid var(--red-dark);   color: #ff8888; }
     .pill-gray  { background: rgba(20,20,20,0.5); border: 1px solid #333;              color: #666; }
 
-    /* ── Privilege banner ──────────────────────────────────────────── */
-    #priv-banner {
-      display: none;
-      width: 100%;
-      max-width: 1100px;
-      margin: 0 auto 18px;
-      padding: 12px 18px;
-      background: rgba(100,20,0,0.55);
-      border: 1px solid var(--red-dark);
-      border-radius: var(--radius);
-      font-size: 0.78rem;
-      letter-spacing: 0.06em;
-      color: #ff9999;
-      line-height: 1.6;
-    }
-    #priv-banner strong { color: #ff4444; }
-    #priv-banner code {
-      background: rgba(0,0,0,0.45);
-      border: 1px solid rgba(200,0,0,0.3);
-      border-radius: 2px;
-      padding: 1px 6px;
-      color: var(--green);
-      font-family: 'Courier New', monospace;
-      font-size: 0.86em;
-    }
-
-    /* ── Windows notice banner ─────────────────────────────────────── */
-    #win-banner {
-      width: 100%;
-      max-width: 1100px;
-      margin: 0 auto 18px;
-      padding: 12px 18px;
-      background: rgba(0,30,60,0.65);
-      border: 1px solid rgba(0,100,200,0.5);
-      border-radius: var(--radius);
-      font-size: 0.78rem;
-      letter-spacing: 0.06em;
-      color: #99ccff;
-      line-height: 1.6;
-    }
-    #win-banner strong { color: #66aaff; }
-    #win-banner code {
-      background: rgba(0,0,0,0.45);
-      border: 1px solid rgba(0,80,160,0.4);
-      border-radius: 2px;
-      padding: 1px 6px;
-      color: var(--green);
-      font-family: 'Courier New', monospace;
-      font-size: 0.86em;
-    }
-
-    /* ── Android / Termux notice banner ───────────────────────────── */
-    #android-banner {
-      width: 100%;
-      max-width: 1100px;
-      margin: 0 auto 18px;
-      padding: 12px 18px;
-      background: rgba(10,40,10,0.65);
-      border: 1px solid rgba(60,180,60,0.45);
-      border-radius: var(--radius);
-      font-size: 0.78rem;
-      letter-spacing: 0.06em;
-      color: #99ee99;
-      line-height: 1.6;
-    }
-    #android-banner strong { color: #66dd66; }
-    #android-banner code {
-      background: rgba(0,0,0,0.45);
-      border: 1px solid rgba(40,140,40,0.4);
-      border-radius: 2px;
-      padding: 1px 6px;
-      color: var(--green);
-      font-family: 'Courier New', monospace;
-      font-size: 0.86em;
-    }
-
-    /* ── Status bar ────────────────────────────────────────────────── */
-    #status-bar {
-      position: fixed;
-      bottom: 0; left: 0; right: 0;
-      z-index: 20;
-      background: rgba(0,0,0,0.9);
-      border-top: 1px solid rgba(139,0,0,0.4);
-      padding: 5px 20px;
-      font-size: 0.68rem;
-      letter-spacing: 0.12em;
-      display: flex;
-      align-items: center;
-      gap: 18px;
-    }
-    #status-bar .sb-item { color: var(--muted); }
-    #status-bar .sb-item span { color: var(--green-dim); }
-    #sb-status { color: var(--green); margin-left: auto; }
-
-    /* ── Spinner ───────────────────────────────────────────────────── */
+    /* ── Spinner ────────────────────────────────────────────────────── */
     .spin {
       display: inline-block;
       width: 12px; height: 12px;
@@ -515,7 +619,7 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* ── Divider ───────────────────────────────────────────────────── */
+    /* ── Divider ─────────────────────────────────────────────────────── */
     .divider {
       height: 1px;
       background: rgba(0,150,30,0.15);
@@ -746,81 +850,84 @@
 <!-- Blood pool strip (accumulates at bottom) -->
 <div id="blood-pool"></div>
 
-<div id="app">
+<!-- ── Icon Dock ────────────────────────────────────────────────────── -->
+<div id="dock">
+  <div class="dock-logo">☠<br>NL</div>
+  <div class="dock-icon active" id="dock-btn-drives"  onclick="toggleWin('win-drives')">  <span class="di-g">💀</span><span class="di-l">Drives</span></div>
+  <div class="dock-icon"        id="dock-btn-forge"   onclick="toggleWin('win-forge')">   <span class="di-g">⚙️</span><span class="di-l">Forge</span></div>
+  <div class="dock-icon"        id="dock-btn-addiso"  onclick="toggleWin('win-addiso')">  <span class="di-g">📀</span><span class="di-l">ISO</span></div>
+  <div class="dock-icon"        id="dock-btn-vault"   onclick="toggleWin('win-vault')">   <span class="di-g">🗄️</span><span class="di-l">Vault</span></div>
+  <div class="dock-icon"        id="dock-btn-inspect" onclick="toggleWin('win-inspect')"> <span class="di-g">🔬</span><span class="di-l">Inspect</span></div>
+  <div class="dock-sep"></div>
+  <div class="dock-icon"        id="dock-btn-winpe"   onclick="toggleWin('win-winpe')">   <span class="di-g">🪟</span><span class="di-l">Win PE</span></div>
+  <div class="dock-icon"        id="dock-btn-gemini"  onclick="toggleWin('win-gemini')">  <span class="di-g">🤖</span><span class="di-l">Gemini</span></div>
+  <div class="dock-sep"></div>
+  <div class="dock-icon"        id="dock-btn-log"     onclick="toggleWin('win-log')">     <span class="di-g">📟</span><span class="di-l">Log</span></div>
+</div>
 
-  <!-- ── HEADER ────────────────────────────────────────────────────── -->
-  <header>
-    <div id="title-wrap">
-      <h1 id="title">NIGHTMARE LOADER</h1>
+<!-- ── Desktop ────────────────────────────────────────────────────── -->
+<!-- Ghost title for blood drip anchor (visual only) -->
+<div id="title-wrap"><h1 id="title">NIGHTMARE&nbsp;LOADER</h1></div>
+
+<!-- Platform notification banners -->
+<div id="priv-banner" class="os-banner">
+  ⚠ <strong>NOT RUNNING AS ADMIN</strong> — Prepare Drive and Add ISO (copy mode) require root access.<br>
+  <strong>Easy fix:</strong> run <code>nightmare-loader install-launcher</code> once, or:
+  <code>sudo nightmare-loader ui</code>
+</div>
+<div id="win-banner" class="os-banner">
+  🪟 <strong>WINDOWS MODE</strong> — ISO inspection and USB detection supported.
+  Partitioning + GRUB require Linux / <a href="https://learn.microsoft.com/windows/wsl/install" target="_blank" style="color:var(--green)">WSL 2</a>.
+</div>
+<div id="android-banner" class="os-banner">
+  🤖 <strong>ANDROID / TERMUX MODE</strong> — ISO inspection and OTG USB detection supported.
+  Root + <code>pkg install tsu parted dosfstools util-linux</code> for full access.
+</div>
+
+<div id="desktop">
+
+  <!-- ┌── DRIVE MANAGER ──────────────────────────────────────────────┐ -->
+  <div class="os-win" id="win-drives" style="left:64px;top:10px;width:340px">
+    <div class="win-bar">
+      <span class="win-bar-icon">💀</span>
+      <span class="win-bar-title">Drive Manager</span>
+      <div class="win-btns">
+        <div class="wbtn wbtn-min"   onclick="minimizeWin('win-drives')"></div>
+        <div class="wbtn wbtn-close" onclick="closeWin('win-drives')"></div>
+      </div>
     </div>
-    <p id="subtitle">Multi-ISO Bootable USB Creator · UEFI + Legacy BIOS</p>
-  </header>
-
-  <!-- ── Privilege warning banner (shown when not running as root) ──── -->
-  <div id="priv-banner">
-    ⚠ <strong>NOT RUNNING AS ADMIN</strong> — Prepare Drive and Add ISO (copy mode) require
-    root access.<br>
-    <strong>Easy fix:</strong> run <code>nightmare-loader install-launcher</code> once to create
-    a desktop shortcut, then launch Nightmare Loader from your application menu — it will
-    ask for your password automatically.
-    Alternatively: <code>sudo nightmare-loader ui</code>
-  </div>
-
-  <!-- ── Windows notice banner ─────────────────────────────────────── -->
-  <div id="win-banner" style="display:none">
-    🪟 <strong>WINDOWS MODE</strong> — ISO inspection and USB drive detection are supported.
-    Partitioning + GRUB installation require Linux (or
-    <a href="https://learn.microsoft.com/windows/wsl/install" target="_blank"
-       style="color:var(--green)">WSL 2</a>).
-    <strong>To prepare a drive</strong>: install Nightmare Loader inside WSL 2, then run
-    <code>sudo nightmare-loader prepare /dev/sd&lt;x&gt;</code> from the WSL terminal.
-  </div>
-
-  <!-- ── Android / Termux notice banner ──────────────────────────── -->
-  <div id="android-banner" style="display:none">
-    🤖 <strong>ANDROID / TERMUX MODE</strong> — ISO inspection and OTG USB drive detection
-    are supported.  Partitioning + GRUB installation require
-    <a href="https://github.com/termux/termux-app" target="_blank"
-       style="color:var(--green)">Termux</a> with root access (<code>tsu</code>) and the
-    <code>parted</code> + <code>dosfstools</code> packages.<br>
-    <strong>To install dependencies:</strong>
-    <code>pkg install tsu parted dosfstools util-linux</code>
-  </div>
-
-  <!-- ── MAIN GRID ─────────────────────────────────────────────────── -->
-  <div id="grid">
-
-    <!-- ┌─ DRIVES ──────────────────────────────────────────┐ -->
-    <div class="panel col-4" id="panel-drives">
-      <div class="panel-title"><span class="icon">💀</span> Drives</div>
-
+    <div class="win-body">
       <div class="btn-row">
         <button class="btn btn-green" onclick="refreshDrives()">⟳ Refresh</button>
       </div>
-
       <ul class="item-list" id="drive-list">
         <li class="empty-msg">Loading drives…</li>
       </ul>
-
       <div id="drive-detail" style="display:none">
         <table class="meta-table" id="drive-meta"></table>
       </div>
     </div>
+  </div>
 
-    <!-- ┌─ PREPARE DRIVE ────────────────────────────────────┐ -->
-    <div class="panel col-4" id="panel-prepare">
-      <div class="panel-title"><span class="icon">⚙️</span> Prepare Drive</div>
-
+  <!-- ┌── DRIVE FORGE (Prepare) ──────────────────────────────────────┐ -->
+  <div class="os-win" id="win-forge" style="left:420px;top:10px;width:360px;display:none">
+    <div class="win-bar">
+      <span class="win-bar-icon">⚙️</span>
+      <span class="win-bar-title">Drive Forge — Prepare &amp; Install</span>
+      <div class="win-btns">
+        <div class="wbtn wbtn-min"   onclick="minimizeWin('win-forge')"></div>
+        <div class="wbtn wbtn-close" onclick="closeWin('win-forge')"></div>
+      </div>
+    </div>
+    <div class="win-body">
       <div class="field">
         <label>Target Device</label>
         <input type="text" id="prep-device" placeholder="/dev/sdb" />
       </div>
-
       <div class="field">
         <label>Volume Label <small style="color:var(--muted)">(max 11 chars)</small></label>
         <input type="text" id="prep-label" value="NIGHTMARE" maxlength="11" />
       </div>
-
       <div class="field">
         <label>Partition Layout</label>
         <div class="toggle-group">
@@ -830,59 +937,59 @@
           <label for="lay-gpt">GPT + ESP</label>
         </div>
       </div>
-
       <p style="font-size:0.69rem;color:var(--muted);line-height:1.5">
         <strong style="color:#ffaa44">⚠ WARNING:</strong> All data on the selected device will be erased.
         GRUB2 will be installed for both UEFI and legacy BIOS.
       </p>
-
       <div class="btn-row">
         <button class="btn btn-red" onclick="confirmPrepare()">💀 Prepare Drive</button>
       </div>
-
       <div class="progress-wrap" id="prep-progress-wrap" style="display:none">
         <div class="progress-bar" id="prep-progress"></div>
       </div>
-
       <hr class="divider" />
-
       <div style="font-size:0.7rem;line-height:1.65;color:var(--muted)">
-        <div style="color:var(--label);letter-spacing:0.12em;font-size:0.67rem;margin-bottom:6px">
-          🖥 BOOT FROM USB – QUICK GUIDE
-        </div>
+        <div style="color:var(--label);letter-spacing:0.12em;font-size:0.67rem;margin-bottom:6px">🖥 BOOT FROM USB – QUICK GUIDE</div>
         <ol style="padding-left:1.1em;display:flex;flex-direction:column;gap:4px">
-          <li>Insert the prepared USB drive and <strong style="color:var(--green-dim)">restart</strong> your computer.</li>
-          <li>Enter your <strong style="color:var(--green-dim)">BIOS / UEFI firmware</strong> (typically <kbd style="background:rgba(0,80,20,0.4);border:1px solid var(--green-dark);border-radius:2px;padding:0 4px">F2</kbd>, <kbd style="background:rgba(0,80,20,0.4);border:1px solid var(--green-dark);border-radius:2px;padding:0 4px">F12</kbd>, <kbd style="background:rgba(0,80,20,0.4);border:1px solid var(--green-dark);border-radius:2px;padding:0 4px">Del</kbd> or <kbd style="background:rgba(0,80,20,0.4);border:1px solid var(--green-dark);border-radius:2px;padding:0 4px">Esc</kbd> during POST).</li>
-          <li>Set the <strong style="color:var(--green-dim)">boot order</strong> so the USB drive is first, or choose it from the one-time <strong style="color:var(--green-dim)">boot menu</strong>.</li>
-          <li>Save and exit — the <strong style="color:var(--red)">Nightmare Loader</strong> GRUB menu will appear.</li>
-          <li>Select an ISO entry to boot it.</li>
+          <li>Insert drive and <strong style="color:var(--green-dim)">restart</strong>.</li>
+          <li>Enter <strong style="color:var(--green-dim)">BIOS / UEFI</strong>
+            (<kbd style="background:rgba(0,80,20,0.4);border:1px solid var(--green-dark);border-radius:2px;padding:0 4px">F2</kbd>
+             <kbd style="background:rgba(0,80,20,0.4);border:1px solid var(--green-dark);border-radius:2px;padding:0 4px">F12</kbd>
+             <kbd style="background:rgba(0,80,20,0.4);border:1px solid var(--green-dark);border-radius:2px;padding:0 4px">Del</kbd>).</li>
+          <li>Set USB as first boot device.</li>
+          <li>Save &amp; exit — <strong style="color:var(--red)">Nightmare Loader</strong> GRUB menu appears.</li>
+          <li>Select an ISO or OS to boot.</li>
         </ol>
         <p style="margin-top:8px;font-size:0.66rem">
-          <strong style="color:#ffaa44">UEFI Secure Boot:</strong> may need to be disabled if your ISOs are unsigned.
-          Look for "Secure Boot" in your UEFI security settings and set it to <em>Disabled</em>.
+          <strong style="color:#ffaa44">UEFI Secure Boot</strong> may need to be disabled for unsigned ISOs.
         </p>
       </div>
     </div>
+  </div>
 
-    <!-- ┌─ ADD ISO ──────────────────────────────────────────┐ -->
-    <div class="panel col-4" id="panel-add">
-      <div class="panel-title"><span class="icon">📀</span> Add ISO</div>
-
+  <!-- ┌── ISO LOADER (Add) ───────────────────────────────────────────┐ -->
+  <div class="os-win" id="win-addiso" style="left:800px;top:10px;width:340px;display:none">
+    <div class="win-bar">
+      <span class="win-bar-icon">📀</span>
+      <span class="win-bar-title">ISO Loader — Add ISO</span>
+      <div class="win-btns">
+        <div class="wbtn wbtn-min"   onclick="minimizeWin('win-addiso')"></div>
+        <div class="wbtn wbtn-close" onclick="closeWin('win-addiso')"></div>
+      </div>
+    </div>
+    <div class="win-body">
       <div class="field">
         <label>Target Device</label>
         <input type="text" id="add-device" placeholder="/dev/sdb" />
       </div>
-
       <div class="field">
         <label>ISO Path on Host</label>
         <input type="text" id="add-iso-path" placeholder="/home/user/ubuntu.iso" />
       </div>
-
       <div class="field">
         <label>Custom Menu Label <small style="color:var(--muted)">(optional)</small></label>
         <input type="text" id="add-label" placeholder="Auto-detected" />
       </div>
-
       <div class="field">
         <label>Mode</label>
         <div class="toggle-group">
@@ -892,17 +999,24 @@
           <label for="copy-no">Register only</label>
         </div>
       </div>
-
       <div class="btn-row">
         <button class="btn btn-green" onclick="addISO()">+ Add ISO</button>
         <button class="btn btn-ghost" onclick="inspectISOPath()">🔍 Inspect</button>
       </div>
     </div>
+  </div>
 
-    <!-- ┌─ ISO VAULT ────────────────────────────────────────┐ -->
-    <div class="panel col-7" id="panel-vault">
-      <div class="panel-title"><span class="icon">🗄️</span> ISO Vault</div>
-
+  <!-- ┌── ISO VAULT ──────────────────────────────────────────────────┐ -->
+  <div class="os-win" id="win-vault" style="left:64px;top:380px;width:520px;display:none">
+    <div class="win-bar">
+      <span class="win-bar-icon">🗄️</span>
+      <span class="win-bar-title">ISO Vault</span>
+      <div class="win-btns">
+        <div class="wbtn wbtn-min"   onclick="minimizeWin('win-vault')"></div>
+        <div class="wbtn wbtn-close" onclick="closeWin('win-vault')"></div>
+      </div>
+    </div>
+    <div class="win-body">
       <div class="row">
         <div class="field" style="flex:2">
           <label>Device</label>
@@ -912,56 +1026,157 @@
           <button class="btn btn-green" onclick="loadVault()">⟳ Load</button>
         </div>
       </div>
-
       <ul class="item-list" id="vault-list">
         <li class="empty-msg">Select a device and click Load.</li>
       </ul>
-
       <div class="btn-row" id="vault-actions" style="display:none">
         <button class="btn btn-ghost" onclick="removeSelected()">🗑 Remove Selected</button>
         <button class="btn btn-ghost" onclick="inspectSelected()">🔍 Inspect Selected</button>
       </div>
     </div>
+  </div>
 
-    <!-- ┌─ ISO INSPECTOR ────────────────────────────────────┐ -->
-    <div class="panel col-5" id="panel-inspect">
-      <div class="panel-title"><span class="icon">🔬</span> ISO Inspector</div>
-
+  <!-- ┌── ISO INSPECTOR ──────────────────────────────────────────────┐ -->
+  <div class="os-win" id="win-inspect" style="left:600px;top:380px;width:380px;display:none">
+    <div class="win-bar">
+      <span class="win-bar-icon">🔬</span>
+      <span class="win-bar-title">ISO Inspector</span>
+      <div class="win-btns">
+        <div class="wbtn wbtn-min"   onclick="minimizeWin('win-inspect')"></div>
+        <div class="wbtn wbtn-close" onclick="closeWin('win-inspect')"></div>
+      </div>
+    </div>
+    <div class="win-body">
       <div class="field">
         <label>ISO Path</label>
         <input type="text" id="inspect-path" placeholder="/path/to/image.iso" />
       </div>
-
       <div class="btn-row">
         <button class="btn btn-green" onclick="inspectISO()">🔍 Inspect</button>
         <button class="btn btn-ghost" onclick="clearInspect()">✕ Clear</button>
       </div>
-
       <hr class="divider" />
-
       <div id="inspect-result">
         <p class="empty-msg">Paste an ISO path above and click Inspect.</p>
       </div>
     </div>
+  </div>
 
-    <!-- ┌─ OPERATION LOG ────────────────────────────────────┐ -->
-    <div class="panel col-12" id="panel-log">
-      <div class="panel-title" style="justify-content:space-between">
-        <span><span class="icon">📟</span> Operation Log</span>
+  <!-- ┌── WINDOWS PE / QUICK BOOT ────────────────────────────────────┐ -->
+  <div class="os-win" id="win-winpe" style="left:420px;top:380px;width:400px;display:none">
+    <div class="win-bar">
+      <span class="win-bar-icon">🪟</span>
+      <span class="win-bar-title">Windows PE — Quick Boot</span>
+      <div class="win-btns">
+        <div class="wbtn wbtn-min"   onclick="minimizeWin('win-winpe')"></div>
+        <div class="wbtn wbtn-close" onclick="closeWin('win-winpe')"></div>
+      </div>
+    </div>
+    <div class="win-body">
+      <p style="font-size:0.72rem;color:var(--muted);line-height:1.6">
+        Boot into a Windows PE environment. The Nightmare Loader web UI launches automatically
+        as the browser desktop shell inside WinPE.
+      </p>
+      <div class="field">
+        <label>Target Device</label>
+        <input type="text" id="winpe-device" placeholder="/dev/sdb" />
+      </div>
+      <div class="field">
+        <label>Windows PE ISO Path</label>
+        <input type="text" id="winpe-iso-path" placeholder="/home/user/WinPE.iso" />
+      </div>
+      <div class="field">
+        <label>Menu Label</label>
+        <input type="text" id="winpe-label" value="Windows PE — Browser Desktop" />
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-green" onclick="addWinPE()">+ Add WinPE Boot Entry</button>
+        <button class="btn btn-ghost" onclick="inspectWinPEIso()">🔍 Inspect ISO</button>
+      </div>
+      <hr class="divider" />
+      <div style="font-size:0.7rem;color:var(--muted);line-height:1.6">
+        <strong style="color:var(--label)">Recommended ISOs:</strong><br>
+        <a href="https://docs.microsoft.com/windows-hardware/manufacture/desktop/winpe-intro"
+           target="_blank" style="color:var(--green)">Microsoft ADK WinPE</a> ·
+        <a href="https://www.hirensbootcd.org/" target="_blank" style="color:var(--green)">Hiren's BootCD PE</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ┌── GEMINI AI ───────────────────────────────────────────────────┐ -->
+  <div class="os-win" id="win-gemini" style="left:64px;top:380px;width:460px;display:none">
+    <div class="win-bar">
+      <span class="win-bar-icon">🤖</span>
+      <span class="win-bar-title">Gemini AI — Nightmare Assistant</span>
+      <div class="win-btns">
+        <div class="wbtn wbtn-min"   onclick="minimizeWin('win-gemini')"></div>
+        <div class="wbtn wbtn-close" onclick="closeWin('win-gemini')"></div>
+      </div>
+    </div>
+    <div class="win-body" style="padding:0;gap:0">
+      <!-- API key setup screen -->
+      <div id="gemini-setup" style="padding:14px 16px;display:flex;flex-direction:column;gap:10px">
+        <div class="panel-title">🤖 Gemini AI — Configuration</div>
+        <p style="font-size:0.72rem;color:var(--muted);line-height:1.55">
+          Enter your Google Gemini API key to activate the Nightmare AI assistant.
+          It can help with distros, GRUB config, partitioning, troubleshooting, and more.<br>
+          <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--green)">Get a free key at aistudio.google.com →</a>
+        </p>
+        <div class="field">
+          <label>Gemini API Key</label>
+          <input type="password" id="gemini-key" placeholder="AIza…" />
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-green" onclick="initGemini()">⚡ Connect</button>
+          <button class="btn btn-ghost" onclick="clearGeminiKey()">✕ Clear</button>
+        </div>
+      </div>
+      <!-- Chat interface -->
+      <div id="gemini-chat" style="display:none;flex-direction:column;flex:1">
+        <div class="gemini-msgs" id="gemini-messages"></div>
+        <div style="padding:8px 12px;border-top:1px solid rgba(139,0,0,0.3);display:flex;gap:6px;flex-shrink:0">
+          <input type="text" id="gemini-input"
+                 placeholder="Ask about distros, boot, partitions…"
+                 onkeydown="if(event.key==='Enter')sendGemini()"
+                 style="flex:1" />
+          <button class="btn btn-green" onclick="sendGemini()" style="padding:6px 12px">▶</button>
+          <button class="btn btn-ghost" onclick="clearGeminiKey()" style="padding:6px 10px;font-size:0.6rem">Key</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ┌── OPERATION LOG ───────────────────────────────────────────────┐ -->
+  <div class="os-win" id="win-log" style="left:64px;top:680px;width:900px;display:none">
+    <div class="win-bar">
+      <span class="win-bar-icon">📟</span>
+      <span class="win-bar-title">Operation Log</span>
+      <div class="win-btns">
+        <div class="wbtn wbtn-min"   onclick="minimizeWin('win-log')"></div>
+        <div class="wbtn wbtn-close" onclick="closeWin('win-log')"></div>
+      </div>
+    </div>
+    <div class="win-body" style="padding:10px 12px;gap:6px">
+      <div style="display:flex;justify-content:flex-end">
         <button class="btn btn-ghost" style="padding:2px 10px;font-size:0.65rem" onclick="clearLog()">Clear</button>
       </div>
       <div id="log-output"></div>
     </div>
+  </div>
 
-  </div><!-- /#grid -->
-</div><!-- /#app -->
+</div><!-- /#desktop -->
 
-<!-- ── Status bar ──────────────────────────────────────────────────── -->
-<div id="status-bar">
-  <div class="sb-item">Version: <span id="sb-version">…</span></div>
-  <div class="sb-item">API: <span id="sb-api">checking…</span></div>
-  <div class="sb-item">Admin: <span id="sb-root">checking…</span></div>
-  <div id="sb-status">READY</div>
+<!-- ── Taskbar ────────────────────────────────────────────────────── -->
+<div id="taskbar">
+  <div id="tb-start">☠ NIGHTMARE OS</div>
+  <div id="tb-apps"></div>
+  <div id="tb-tray">
+    <div class="tray-item">API: <span id="sb-api">…</span></div>
+    <div class="tray-item">Root: <span id="sb-root">…</span></div>
+    <div class="tray-item">v<span id="sb-version">…</span></div>
+    <div id="sb-status">READY</div>
+    <div id="tray-clock">00:00:00</div>
+  </div>
 </div>
 
 <!-- ── Confirm modal ──────────────────────────────────────────────── -->
@@ -1254,7 +1469,7 @@
 ═══════════════════════════════════════════════════════════════════ */
 (function () {
   function glitch() {
-    const panels = document.querySelectorAll('.panel');
+    const panels = document.querySelectorAll('.os-win');
     if (!panels.length) return;
     const p  = panels[Math.floor(Math.random() * panels.length)];
     const tx = ((Math.random() - 0.5) * 6).toFixed(1);
@@ -1278,6 +1493,276 @@
   }
 
   setTimeout(schedule, 6000);
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   DESKTOP WINDOW MANAGEMENT
+═══════════════════════════════════════════════════════════════════ */
+(function () {
+  let topZ = 50;
+
+  // Drag-to-move for each OS window
+  function makeDraggable(win) {
+    const bar = win.querySelector('.win-bar');
+    let dragging = false, ox = 0, oy = 0;
+
+    bar.addEventListener('mousedown', e => {
+      if (e.target.classList.contains('wbtn')) return;
+      dragging = true;
+      ox = e.clientX - win.offsetLeft;
+      oy = e.clientY - win.offsetTop;
+      focusWin(win.id);
+      e.preventDefault();
+    });
+    document.addEventListener('mousemove', e => {
+      if (!dragging) return;
+      const maxX = window.innerWidth  - win.offsetWidth  - 4;
+      const maxY = window.innerHeight - win.offsetHeight - 44;
+      win.style.left = Math.max(56, Math.min(maxX, e.clientX - ox)) + 'px';
+      win.style.top  = Math.max(0,  Math.min(maxY, e.clientY - oy)) + 'px';
+    });
+    document.addEventListener('mouseup', () => { dragging = false; });
+  }
+
+  function focusWin(id) {
+    document.querySelectorAll('.os-win').forEach(w => w.classList.remove('focused'));
+    const win = document.getElementById(id);
+    if (win) { win.style.zIndex = ++topZ; win.classList.add('focused'); }
+    updateTaskbarApps();
+  }
+
+  window.openWin = function (id) {
+    const win = document.getElementById(id);
+    if (!win) return;
+    win.style.display = 'flex';
+    win.classList.remove('minimized');
+    focusWin(id);
+    updateDock();
+  };
+
+  window.closeWin = function (id) {
+    const win = document.getElementById(id);
+    if (win) win.style.display = 'none';
+    updateTaskbarApps();
+    updateDock();
+  };
+
+  window.minimizeWin = function (id) {
+    const win = document.getElementById(id);
+    if (win) win.classList.add('minimized');
+    updateTaskbarApps();
+    updateDock();
+  };
+
+  window.toggleWin = function (id) {
+    const win = document.getElementById(id);
+    if (!win) return;
+    if (win.style.display === 'none' || win.classList.contains('minimized')) {
+      openWin(id);
+    } else {
+      minimizeWin(id);
+    }
+  };
+
+  const TB_APPS = [
+    { id: 'win-drives',  label: '💀 Drives'  },
+    { id: 'win-forge',   label: '⚙️ Forge'   },
+    { id: 'win-addiso',  label: '📀 ISO'     },
+    { id: 'win-vault',   label: '🗄️ Vault'   },
+    { id: 'win-inspect', label: '🔬 Inspect' },
+    { id: 'win-winpe',   label: '🪟 Win PE'  },
+    { id: 'win-gemini',  label: '🤖 Gemini'  },
+    { id: 'win-log',     label: '📟 Log'     },
+  ];
+
+  function buildTaskbarApps() {
+    const container = document.getElementById('tb-apps');
+    container.innerHTML = '';
+    TB_APPS.forEach(a => {
+      const btn = document.createElement('div');
+      btn.className = 'tb-app';
+      btn.id = 'tb-' + a.id;
+      btn.textContent = a.label;
+      btn.onclick = () => toggleWin(a.id);
+      container.appendChild(btn);
+    });
+  }
+
+  function updateTaskbarApps() {
+    TB_APPS.forEach(a => {
+      const btn = document.getElementById('tb-' + a.id);
+      if (!btn) return;
+      const win = document.getElementById(a.id);
+      const isVisible   = win && win.style.display !== 'none';
+      const isMinimized = win && win.classList.contains('minimized');
+      btn.classList.toggle('open',      isVisible && !isMinimized);
+      btn.classList.toggle('minimized', !!isMinimized);
+    });
+  }
+
+  function updateDock() {
+    document.querySelectorAll('#dock .dock-icon').forEach(icon => {
+      const winId = icon.id.replace('dock-btn-', 'win-');
+      const win   = document.getElementById(winId);
+      const open  = win && win.style.display !== 'none' && !win.classList.contains('minimized');
+      icon.classList.toggle('active', open);
+    });
+  }
+
+  // Live clock
+  function tick() {
+    const el = document.getElementById('tray-clock');
+    if (!el) return;
+    const now = new Date();
+    el.textContent =
+      String(now.getHours()).padStart(2, '0')   + ':' +
+      String(now.getMinutes()).padStart(2, '0') + ':' +
+      String(now.getSeconds()).padStart(2, '0');
+  }
+  setInterval(tick, 1000);
+  tick();
+
+  // Init on DOMContentLoaded
+  document.addEventListener('DOMContentLoaded', () => {
+    buildTaskbarApps();
+    document.querySelectorAll('.os-win').forEach(win => {
+      makeDraggable(win);
+      win.addEventListener('mousedown', () => focusWin(win.id), true);
+    });
+    // Open Drive Manager by default
+    openWin('win-drives');
+    updateDock();
+  });
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   WINDOWS PE QUICK BOOT
+═══════════════════════════════════════════════════════════════════ */
+async function addWinPE() {
+  const device  = document.getElementById('winpe-device').value.trim();
+  const isoPath = document.getElementById('winpe-iso-path').value.trim();
+  const label   = document.getElementById('winpe-label').value.trim() || 'Windows PE \u2014 Browser Desktop';
+
+  if (!device)  { log('Win PE: no device specified.', 'err');   return; }
+  if (!isoPath) { log('Win PE: no ISO path specified.', 'err'); return; }
+
+  setStatus('Adding Windows PE\u2026', true);
+  log('\u2501\u2501 ADD WIN PE ' + isoPath.split('/').pop() + ' \u2192 ' + device + ' \u2501\u2501', 'head');
+
+  try {
+    const res = await apiPost('/api/add', { device, iso_path: isoPath, label, copy: true });
+    log(res.message || 'Windows PE added to boot menu.', 'ok');
+    log('Boot entry "' + label + '" is now in GRUB.', 'ok');
+    setStatus('READY');
+    if (document.getElementById('vault-device').value === device) loadVault();
+  } catch (e) {
+    log('Win PE add failed: ' + e.message, 'err');
+    setStatus('ERROR');
+  }
+}
+
+function inspectWinPEIso() {
+  const path = document.getElementById('winpe-iso-path').value.trim();
+  if (!path) { log('Inspect: no path provided.', 'err'); return; }
+  document.getElementById('inspect-path').value = path;
+  openWin('win-inspect');
+  inspectISO();
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   GEMINI AI CHAT
+═══════════════════════════════════════════════════════════════════ */
+(function () {
+  const SYSTEM_PROMPT =
+    'You are the Nightmare Loader AI — an expert in Linux, Windows, boot loaders, ISO images, ' +
+    'GRUB2, disk partitioning, UEFI/BIOS, and live OS environments. ' +
+    'You speak with a slightly dramatic, gothic tone but are technically precise and helpful. ' +
+    'Keep answers concise. Format commands/paths in backticks. ' +
+    'Never refuse to help with legitimate OS, boot, or system questions.';
+
+  function geminiKey()  { return localStorage.getItem('nl-gemini-key') || ''; }
+  function setGeminiKey(k) { localStorage.setItem('nl-gemini-key', k); }
+
+  window.initGemini = function () {
+    const input = document.getElementById('gemini-key');
+    const key   = input.value.trim();
+    if (!key) { log('Gemini: no API key provided.', 'err'); return; }
+    setGeminiKey(key);
+    showChat();
+    addMsg('system', 'Connected to Gemini. The darkness awaits your command\u2026');
+    log('Gemini AI connected.', 'ok');
+  };
+
+  window.clearGeminiKey = function () {
+    localStorage.removeItem('nl-gemini-key');
+    document.getElementById('gemini-key').value = '';
+    document.getElementById('gemini-setup').style.display = 'flex';
+    document.getElementById('gemini-chat').style.display  = 'none';
+  };
+
+  function showChat() {
+    document.getElementById('gemini-setup').style.display = 'none';
+    document.getElementById('gemini-chat').style.display  = 'flex';
+  }
+
+  function addMsg(role, text) {
+    const msgs = document.getElementById('gemini-messages');
+    const el   = document.createElement('div');
+    el.className  = 'gmsg gmsg-' + role;
+    el.textContent = text;
+    msgs.appendChild(el);
+    msgs.scrollTop = msgs.scrollHeight;
+    return el;
+  }
+
+  window.sendGemini = async function () {
+    const key = geminiKey();
+    if (!key) { clearGeminiKey(); return; }
+
+    const inputEl = document.getElementById('gemini-input');
+    const text    = inputEl.value.trim();
+    if (!text) return;
+    inputEl.value = '';
+
+    addMsg('user', text);
+    const thinking = addMsg('ai', '\u25cc thinking\u2026');
+
+    try {
+      const res = await fetch(
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': key,
+          },
+          body: JSON.stringify({
+            system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+            contents: [{ role: 'user', parts: [{ text }] }],
+          }),
+        }
+      );
+      const data = await res.json();
+      if (data.error) throw new Error(data.error.message);
+      const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || '(no response)';
+      thinking.textContent = reply;
+    } catch (e) {
+      thinking.textContent = '\u26a0 Error: ' + e.message;
+      thinking.classList.add('err');
+      log('Gemini error: ' + e.message, 'err');
+    }
+
+    const msgs = document.getElementById('gemini-messages');
+    msgs.scrollTop = msgs.scrollHeight;
+  };
+
+  // Restore session if key already saved
+  document.addEventListener('DOMContentLoaded', () => {
+    if (geminiKey()) showChat();
+  });
 })();
 
 
@@ -1727,8 +2212,10 @@ window.addEventListener('load', () => {
   checkPlatform();
   checkRoot();
   refreshDrives();
-  log('\u2620  NIGHTMARE LOADER \u2014 ALL SYSTEMS ARMED', 'head');
-  log('Matrix initialized. Blood drip armed. Enter the nightmare.', 'ok');
+  // Open the log so users can see startup activity
+  openWin('win-log');
+  log('\u2620  NIGHTMARE OS — ALL SYSTEMS ARMED', 'head');
+  log('Desktop ready. Open any app from the dock or taskbar.', 'ok');
 });
 </script>
 </body>
