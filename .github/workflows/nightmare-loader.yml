@@ -1,0 +1,196 @@
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║                        ░ NIGHTMARE LOADER ░                            ║
+# ║              MULTI-ISO FLASH DRIVE BUILDER  ·  UEFI + BIOS             ║
+# ╠══════════════════════════════════════════════════════════════════════════╣
+# ║  Triggers                                                               ║
+# ║  ─────────────────────────────────────────────────────────────────────  ║
+# ║  • push / PR   → tests run automatically on every branch               ║
+# ║  • tag v*      → full build + draft GitHub Release (flash drive ready) ║
+# ║  • manual      → pre-loader menu lets you choose the operation         ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+name: "⚡ NIGHTMARE LOADER"
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+    branches: ["**"]
+
+  # ── Pre-loader menu ───────────────────────────────────────────────────────
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: |
+          ╔══════════════════════════════════════╗
+          ║   NIGHTMARE LOADER  —  PRE-LOADER    ║
+          ║   Select your operation              ║
+          ╠══════════════════════════════════════╣
+          ║  test-only    → run test suite only  ║
+          ║  build-linux  → wheel + sdist        ║
+          ║  build-windows→ standalone .exe      ║
+          ║  build-all    → test + both builds   ║
+          ║  release      → build-all + release  ║
+          ╚══════════════════════════════════════╝
+        required: true
+        default: "build-all"
+        type: choice
+        options:
+          - test-only
+          - build-linux
+          - build-windows
+          - build-all
+          - release
+
+# ────────────────────────────────────────────────────────────────────────────
+# Shared helper – is the mode one of the listed values?
+# Evaluated inline via expressions because GitHub Actions has no reusable fns.
+# ────────────────────────────────────────────────────────────────────────────
+
+jobs:
+
+  # ══════════════════════════════════════════════════════════════════════════
+  #  ░▒▓  T E S T   S U I T E  ▓▒░
+  #  Runs on: every push/PR  •  dispatch modes: test-only, build-all, release
+  # ══════════════════════════════════════════════════════════════════════════
+  test:
+    name: "🧪 Test  (Python ${{ matrix.python-version }})"
+    if: |
+      github.event_name != 'workflow_dispatch' ||
+      contains(fromJSON('["test-only","build-all","release"]'), inputs.mode)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
+
+    steps:
+      - name: "░ Checkout"
+        uses: actions/checkout@v4
+
+      - name: "░ Set up Python ${{ matrix.python-version }}"
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: "░ Install dependencies"
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: "░ Run test suite"
+        run: pytest --tb=short -q
+
+  # ══════════════════════════════════════════════════════════════════════════
+  #  ░▒▓  B U I L D  —  L I N U X   P A C K A G E  ▓▒░
+  #  Produces: wheel (.whl) + source distribution (.tar.gz)
+  #  Runs on: push to main, tags  •  dispatch modes: build-linux, build-all, release
+  # ══════════════════════════════════════════════════════════════════════════
+  build-linux:
+    name: "🐧 Build  Linux package (wheel + sdist)"
+    if: |
+      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
+      (github.event_name == 'workflow_dispatch' && contains(fromJSON('["build-linux","build-all","release"]'), inputs.mode))
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: "░ Checkout"
+        uses: actions/checkout@v4
+
+      - name: "░ Set up Python"
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: "░ Install build tools"
+        run: python -m pip install --upgrade pip build
+
+      - name: "░ Build wheel + sdist"
+        run: python -m build
+
+      - name: "░ Upload Linux dist artifacts"
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-dist
+          path: dist/
+          if-no-files-found: error
+
+  # ══════════════════════════════════════════════════════════════════════════
+  #  ░▒▓  B U I L D  —  W I N D O W S   E X E  ▓▒░
+  #  Produces: standalone nightmare-loader.exe (UAC-elevated, flash-drive ready)
+  #  Runs on: push to main, tags  •  dispatch modes: build-windows, build-all, release
+  # ══════════════════════════════════════════════════════════════════════════
+  build-windows:
+    name: "🪟 Build  Windows executable (.exe)"
+    if: |
+      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
+      (github.event_name == 'workflow_dispatch' && contains(fromJSON('["build-windows","build-all","release"]'), inputs.mode))
+    runs-on: windows-latest
+
+    steps:
+      - name: "░ Checkout"
+        uses: actions/checkout@v4
+
+      - name: "░ Set up Python"
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: "░ Install package + PyInstaller"
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[windows]"
+
+      - name: "░ Build standalone .exe"
+        run: pyinstaller --clean nightmare-loader.spec
+
+      - name: "░ Upload Windows exe artifact"
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightmare-loader-windows
+          path: dist/nightmare-loader.exe
+          if-no-files-found: error
+
+  # ══════════════════════════════════════════════════════════════════════════
+  #  ░▒▓  R E L E A S E  ▓▒░
+  #  Downloads both build artifacts and creates a draft GitHub Release.
+  #  Flash-drive installers (.exe, .whl, .tar.gz) are attached automatically.
+  #
+  #  Runs on: push of a v* tag  •  dispatch mode: release
+  # ══════════════════════════════════════════════════════════════════════════
+  release:
+    name: "💿 Release  — draft GitHub release with flash-drive artifacts"
+    if: |
+      startsWith(github.ref, 'refs/tags/v') ||
+      (github.event_name == 'workflow_dispatch' && inputs.mode == 'release')
+    needs: [build-linux, build-windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: "░ Download Linux dist"
+        uses: actions/download-artifact@v4
+        with:
+          name: python-dist
+          path: dist/
+
+      - name: "░ Download Windows exe"
+        uses: actions/download-artifact@v4
+        with:
+          name: nightmare-loader-windows
+          path: dist/
+
+      - name: "░ Create draft release with artifacts"
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
+            dist/nightmare-loader.exe

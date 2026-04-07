@@ -115,4 +115,92 @@ echo
 echo " Termux:Widget shortcut:"
 echo "   Install 'Termux:Widget' from F-Droid, add the widget to"
 echo "   your home screen, and tap 'nightmare-loader' to launch."
-echo -e "${GREEN}============================================================${RESET}"
+echo
+echo -e "${BOLD}================================================================${RESET}"
+echo -e "${BOLD} 64 GB FULL KIT – Never be stuck without a working computer     ${RESET}"
+echo -e "${BOLD}================================================================${RESET}"
+echo
+echo -e " ${YELLOW}Shows the full kit plan (sizes + running total):${RESET}"
+echo "   nightmare-loader kit"
+echo
+echo -e " ${YELLOW}Downloads ALL auto-available ISOs to ~/storage/downloads:${RESET}"
+echo "   nightmare-loader kit --download --out ~/storage/downloads"
+echo
+echo -e " ${YELLOW}Downloads repair tools only (~2.3 GB):${RESET}"
+echo "   nightmare-loader kit --download --category repair --out ~/storage/downloads"
+echo
+echo -e "${BOLD}──────────────────────────────────────────────────────────────${RESET}"
+echo -e "${BOLD} MANUAL DOWNLOAD REQUIRED – Windows (save to ~/storage/downloads)${RESET}"
+echo -e "${BOLD}──────────────────────────────────────────────────────────────${RESET}"
+echo
+echo "  win11-repair  ~5800 MB  Windows 11 ISO (has built-in Startup Repair,"
+echo "                          System Restore, Command Prompt, regedit)"
+echo "    → https://www.microsoft.com/en-us/software-download/windows11"
+echo "    After download: nightmare-loader add /dev/sdX Win11_*.iso"
+echo
+echo "  win10-repair  ~4700 MB  Windows 10 ISO (same repair tools as above)"
+echo "    → https://www.microsoft.com/en-us/software-download/windows10"
+echo "    After download: nightmare-loader add /dev/sdX Win10_*.iso"
+echo
+echo "  hirens        ~700 MB   Hiren's BootCD PE – full Windows 11 PE with"
+echo "                          NirSoft registry tools, password reset,"
+echo "                          antivirus, partition wizard, and 100+ utilities"
+echo "    → https://www.hirensbootcd.org/download/"
+echo "    After download: nightmare-loader add /dev/sdX Hirens*.iso"
+echo
+echo -e "${BOLD}──────────────────────────────────────────────────────────────${RESET}"
+echo -e "${BOLD} AUTO-DOWNLOAD – Repair & Recovery tools (~2 275 MB)          ${RESET}"
+echo -e "${BOLD}──────────────────────────────────────────────────────────────${RESET}"
+echo
+echo "  rescuezilla   ~780 MB   Graphical disk imaging & Windows file recovery"
+echo "  systemrescue  ~800 MB   CLI repair: chntpw, ntfsfix, testdisk, photorec"
+echo "  gparted       ~600 MB   Partition resize, repair and management"
+echo "  clonezilla    ~450 MB   Full-disk backup and bare-metal restore"
+echo "  memtest86plus  ~15 MB   RAM hardware diagnostic"
+echo "  shredos        ~30 MB   Secure drive wipe"
+echo
+echo -e "${BOLD}──────────────────────────────────────────────────────────────${RESET}"
+echo -e "${BOLD} AUTO-DOWNLOAD – Linux desktops (~8 300 MB)                   ${RESET}"
+echo -e "${BOLD}──────────────────────────────────────────────────────────────${RESET}"
+echo
+echo "  ubuntu        ~5800 MB  Ubuntu 24.04 LTS – daily driver"
+echo "  mint          ~2800 MB  Linux Mint 22.1 Cinnamon – Windows-like desktop"
+echo "  fedora        ~2200 MB  Fedora 41 Workstation – cutting-edge Linux"
+echo
+echo -e "${BOLD}──────────────────────────────────────────────────────────────${RESET}"
+echo -e "${BOLD} AUTO-DOWNLOAD – Lightweight / backup OS (~5 100 MB)          ${RESET}"
+echo -e "${BOLD}──────────────────────────────────────────────────────────────${RESET}"
+echo
+echo "  debian        ~3200 MB  Debian Live 12 – rock-solid base OS"
+echo "  mxlinux       ~1900 MB  MX Linux – fast, great live-boot tools"
+echo
+echo -e "${BOLD}──────────────────────────────────────────────────────────────${RESET}"
+echo -e "${BOLD} AUTO-DOWNLOAD – Security & privacy (~8 200 MB)               ${RESET}"
+echo -e "${BOLD}──────────────────────────────────────────────────────────────${RESET}"
+echo
+echo "  kali          ~4100 MB  Kali Linux – penetration testing"
+echo "  tails         ~1300 MB  Tails – anonymous, amnesic OS"
+echo "  parrot-home   ~2400 MB  Parrot Home – privacy-focused desktop"
+echo
+echo -e "${BOLD}──────────────────────────────────────────────────────────────${RESET}"
+echo -e "${BOLD} AUTO-DOWNLOAD – Advanced / power-user (~3 700 MB)            ${RESET}"
+echo -e "${BOLD}──────────────────────────────────────────────────────────────${RESET}"
+echo
+echo "  arch          ~900 MB   Arch Linux – bleeding edge, minimal"
+echo "  endeavouros  ~2800 MB   EndeavourOS – Arch with a friendly installer"
+echo
+echo -e "${BOLD}──────────────────────────────────────────────────────────────${RESET}"
+echo -e "${BOLD} TOTALS                                                        ${RESET}"
+echo -e "${BOLD}──────────────────────────────────────────────────────────────${RESET}"
+echo
+echo "  Auto-downloadable   : ~27 575 MB  (~26.9 GB)"
+echo "  Manual (Windows)    : ~11 200 MB  (~10.9 GB)"
+echo "  Grand total         : ~38 775 MB  (~37.9 GB)"
+echo "  Remaining on 64 GB  : ~26 585 MB  (~26.0 GB spare)"
+echo
+echo -e "${BOLD} All other available distros:${RESET}"
+echo "   nightmare-loader download --list"
+echo
+echo -e "${GREEN}================================================================${RESET}"
+
+

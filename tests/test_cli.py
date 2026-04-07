@@ -35,19 +35,19 @@ class TestRequireRoot:
         """On Termux the error should suggest tsu, not sudo."""
         with patch("os.geteuid", return_value=1000), \
              patch("nightmare_loader.cli._is_termux", return_value=True):
-            runner = CliRunner(mix_stderr=False)
+            runner = CliRunner()
             result = runner.invoke(cli, ["prepare", "/dev/sda", "--yes"])
         assert result.exit_code != 0
-        assert "tsu" in result.output or "tsu" in (result.stderr or "")
+        assert "tsu" in result.output
 
     def test_non_termux_message_mentions_sudo(self):
         """On non-Termux the error should mention sudo."""
         with patch("os.geteuid", return_value=1000), \
              patch("nightmare_loader.cli._is_termux", return_value=False):
-            runner = CliRunner(mix_stderr=False)
+            runner = CliRunner()
             result = runner.invoke(cli, ["prepare", "/dev/sda", "--yes"])
         assert result.exit_code != 0
-        combined = result.output + (result.stderr or "")
+        combined = result.output
         assert "sudo" in combined or "root" in combined
 
 
@@ -164,19 +164,19 @@ class TestListWithMountPoint:
         assert "ubuntu.iso" in result.output
 
     def test_list_no_root_no_mount_point_fails(self):
-        runner = CliRunner(mix_stderr=False)
+        runner = CliRunner()
         with patch("os.geteuid", return_value=1000), \
              patch("nightmare_loader.cli._is_termux", return_value=False):
             result = runner.invoke(cli, ["list", "/dev/sda"])
         assert result.exit_code != 0
 
     def test_list_termux_no_root_no_mount_point_suggests_mount_point(self):
-        runner = CliRunner(mix_stderr=False)
+        runner = CliRunner()
         with patch("os.geteuid", return_value=1000), \
              patch("nightmare_loader.cli._is_termux", return_value=True):
             result = runner.invoke(cli, ["list", "/dev/sda"])
         assert result.exit_code != 0
-        combined = result.output + (result.stderr or "")
+        combined = result.output
         assert "--mount-point" in combined
 
 
@@ -253,3 +253,206 @@ class TestUpdateWithMountPoint:
             )
         assert result.exit_code == 0, result.output
         assert "Updated" in result.output
+
+
+# ---------------------------------------------------------------------------
+# nightmare-loader download
+# ---------------------------------------------------------------------------
+
+class TestDownloadList:
+    """download --list should print a table of downloadable distros."""
+
+    def test_lists_downloadable_distros(self):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["download", "--list"])
+        assert result.exit_code == 0, result.output
+        assert "KEY" in result.output
+        assert "URL" in result.output
+        # at least one distro should appear
+        assert "ubuntu" in result.output
+
+    def test_list_does_not_download_anything(self, tmp_path):
+        """--list must not create any files."""
+        runner = CliRunner()
+        with patch("urllib.request.urlretrieve") as mock_get:
+            result = runner.invoke(cli, ["download", "--list", "--out", str(tmp_path)])
+        assert result.exit_code == 0
+        mock_get.assert_not_called()
+
+
+class TestDownloadSingle:
+    """download <distro> should call urlretrieve for the correct URL."""
+
+    def _make_urlretrieve_side_effect(self):
+        """Side effect that creates the destination file so rename() succeeds."""
+        def _side_effect(url, dest, reporthook=None):
+            Path(dest).write_bytes(b"fake iso data")
+        return _side_effect
+
+    def test_downloads_known_distro(self, tmp_path):
+        runner = CliRunner()
+        with patch(
+            "urllib.request.urlretrieve",
+            side_effect=self._make_urlretrieve_side_effect(),
+        ) as mock_get:
+            result = runner.invoke(
+                cli, ["download", "ubuntu", "--out", str(tmp_path)]
+            )
+        assert result.exit_code == 0, result.output
+        assert mock_get.called
+        # The URL should contain 'ubuntu'
+        called_url = mock_get.call_args[0][0]
+        assert "ubuntu" in called_url.lower()
+
+    def test_already_existing_file_is_skipped(self, tmp_path):
+        from nightmare_loader.distros import DISTROS
+        url = DISTROS["ubuntu"]["download_url"]
+        filename = url.split("/")[-1]
+        (tmp_path / filename).write_bytes(b"existing")
+
+        runner = CliRunner()
+        with patch("urllib.request.urlretrieve") as mock_get:
+            result = runner.invoke(
+                cli, ["download", "ubuntu", "--out", str(tmp_path)]
+            )
+        assert result.exit_code == 0
+        mock_get.assert_not_called()
+        assert "skipping" in result.output
+
+    def test_unknown_distro_exits_nonzero(self):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["download", "nonexistent-distro-xyz"])
+        assert result.exit_code != 0
+
+    def test_download_failure_exits_nonzero(self, tmp_path):
+        runner = CliRunner()
+        with patch(
+            "urllib.request.urlretrieve",
+            side_effect=OSError("network error"),
+        ):
+            result = runner.invoke(
+                cli, ["download", "ubuntu", "--out", str(tmp_path)]
+            )
+        assert result.exit_code != 0
+        combined = result.output
+        assert "Failed" in combined or "failed" in combined
+
+    def test_no_args_exits_nonzero(self):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["download"])
+        assert result.exit_code != 0
+
+
+class TestDownloadAll:
+    """download --all should attempt every downloadable distro."""
+
+    def test_calls_urlretrieve_for_each_distro(self, tmp_path):
+        from nightmare_loader.distros import DISTROS
+        downloadable_count = sum(
+            1 for cfg in DISTROS.values() if cfg.get("download_url")
+        )
+
+        def _create_file(url, dest, reporthook=None):
+            Path(dest).write_bytes(b"fake")
+
+        runner = CliRunner()
+        with patch("urllib.request.urlretrieve", side_effect=_create_file) as mock_get:
+            result = runner.invoke(
+                cli, ["download", "--all", "--out", str(tmp_path)]
+            )
+        assert result.exit_code == 0, result.output
+        assert mock_get.call_count == downloadable_count
+
+
+# ---------------------------------------------------------------------------
+# nightmare-loader kit
+# ---------------------------------------------------------------------------
+
+class TestKitList:
+    """kit (no --download) should print the full kit plan."""
+
+    def test_shows_all_categories(self):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["kit"])
+        assert result.exit_code == 0, result.output
+        assert "repair" in result.output.lower()
+        assert "desktop" in result.output.lower()
+        assert "security" in result.output.lower()
+        assert "advanced" in result.output.lower()
+
+    def test_shows_manual_windows_section(self):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["kit"])
+        assert result.exit_code == 0
+        assert "Manual" in result.output
+        assert "www.microsoft.com/en-us/software-download/windows11" in result.output
+
+    def test_category_filter(self):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["kit", "--category", "repair"])
+        assert result.exit_code == 0
+        # repair category should appear
+        assert "repair" in result.output.lower()
+        # desktop entries should NOT appear in the auto-download section
+        assert "ubuntu" not in result.output.lower()
+
+    def test_shows_totals(self):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["kit"])
+        assert result.exit_code == 0
+        assert "total" in result.output.lower()
+        assert "GB" in result.output
+
+
+class TestKitDownload:
+    """kit --download should use _download_iso_url for each auto-downloadable entry."""
+
+    def test_downloads_all_kit_isos(self, tmp_path):
+        from nightmare_loader.distros import DISTROS, KIT_64GB
+        downloadable_count = sum(
+            1 for key, _, _, _ in KIT_64GB
+            if DISTROS.get(key, {}).get("download_url")
+        )
+
+        def _create_file(url, dest, reporthook=None):
+            Path(dest).write_bytes(b"fake")
+
+        runner = CliRunner()
+        with patch("urllib.request.urlretrieve", side_effect=_create_file) as mock_get:
+            result = runner.invoke(
+                cli, ["kit", "--download", "--out", str(tmp_path)]
+            )
+        assert result.exit_code == 0, result.output
+        assert mock_get.call_count == downloadable_count
+
+    def test_download_failure_exits_nonzero(self, tmp_path):
+        runner = CliRunner()
+        with patch(
+            "urllib.request.urlretrieve",
+            side_effect=OSError("network error"),
+        ):
+            result = runner.invoke(
+                cli, ["kit", "--download", "--out", str(tmp_path)]
+            )
+        assert result.exit_code != 0
+        combined = result.output
+        assert "failed" in combined.lower()
+
+    def test_category_filter_downloads_only_matching(self, tmp_path):
+        from nightmare_loader.distros import DISTROS, KIT_64GB
+        repair_count = sum(
+            1 for key, _, cat, _ in KIT_64GB
+            if cat == "repair" and DISTROS.get(key, {}).get("download_url")
+        )
+
+        def _create_file(url, dest, reporthook=None):
+            Path(dest).write_bytes(b"fake")
+
+        runner = CliRunner()
+        with patch("urllib.request.urlretrieve", side_effect=_create_file) as mock_get:
+            result = runner.invoke(
+                cli,
+                ["kit", "--download", "--category", "repair", "--out", str(tmp_path)],
+            )
+        assert result.exit_code == 0, result.output
+        assert mock_get.call_count == repair_count

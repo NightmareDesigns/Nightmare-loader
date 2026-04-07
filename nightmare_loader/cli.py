@@ -30,6 +30,7 @@ import shlex
 import shutil
 import sys
 import tempfile
+import urllib.request
 from pathlib import Path
 
 import click
@@ -112,6 +113,57 @@ def _require_root_or_mount_point(mount_point: str | None) -> None:
                 err=True,
             )
         sys.exit(1)
+
+
+def _download_reporthook(block_num: int, block_size: int, total_size: int) -> None:
+    """urllib reporthook that prints a simple inline progress line."""
+    downloaded = block_num * block_size
+    if total_size > 0:
+        pct = min(downloaded * 100 // total_size, 100)
+        mb = downloaded / 1_048_576
+        total_mb = total_size / 1_048_576
+        click.echo(
+            f"\r       {pct:3d}%  {mb:.1f} / {total_mb:.1f} MB",
+            nl=False,
+        )
+    else:
+        mb = downloaded / 1_048_576
+        click.echo(f"\r       {mb:.1f} MB downloaded", nl=False)
+
+
+def _download_iso_url(key: str, cfg: dict, out_dir: Path) -> bool:
+    """
+    Download the ISO for *key* into *out_dir*.
+
+    Returns ``True`` on success (or if the file already existed), ``False``
+    on failure.  Progress and error messages are printed to stdout/stderr.
+    """
+    url = cfg["download_url"]
+    filename = url.split("/")[-1]
+    dest = out_dir / filename
+
+    if dest.exists():
+        click.echo(f"[{key}] Already exists, skipping: {dest}")
+        return True
+
+    size_mb = cfg.get("download_size_mb")
+    size_hint = f" (~{size_mb} MB)" if isinstance(size_mb, int) else ""
+    click.echo(f"[{key}] Downloading {cfg['label']}{size_hint}…")
+    click.echo(f"       {url}")
+    click.echo(f"       → {dest}")
+
+    tmp_dest = dest.with_suffix(dest.suffix + ".part")
+    try:
+        urllib.request.urlretrieve(url, str(tmp_dest), reporthook=_download_reporthook)
+        click.echo()  # newline after progress
+        tmp_dest.rename(dest)
+        click.echo(f"       ✓ Saved to {dest}\n")
+        return True
+    except Exception as exc:
+        click.echo(f"\n       ✗ Failed: {exc}\n", err=True)
+        if tmp_dest.exists():
+            tmp_dest.unlink()
+        return False
 
 
 def _with_mount(device: str, partition: str):
@@ -507,6 +559,246 @@ def iso_info(iso_path: str) -> None:
     click.echo(f"Kernel  : {meta['kernel']}")
     click.echo(f"Initrd  : {meta['initrd']}")
     click.echo(f"Cmdline : {meta['cmdline']}")
+
+
+# ---------------------------------------------------------------------------
+# nightmare-loader download
+# ---------------------------------------------------------------------------
+
+@cli.command("download")
+@click.argument("distro", default="", required=False)
+@click.option(
+    "--out", "-o",
+    default=".",
+    show_default=True,
+    help="Directory to save downloaded ISOs.",
+)
+@click.option(
+    "--all", "download_all",
+    is_flag=True,
+    default=False,
+    help="Download every distro that has a download URL.",
+)
+@click.option(
+    "--list", "list_only",
+    is_flag=True,
+    default=False,
+    help="List all downloadable distros without downloading anything.",
+)
+def download_iso(distro: str, out: str, download_all: bool, list_only: bool) -> None:
+    """
+    Download one or all distro ISOs to a local directory.
+
+    \b
+    DISTRO  Key of the distro to download, e.g. ubuntu, kali, arch.
+            Omit when using --all or --list.
+
+    \b
+    Examples:
+      nightmare-loader download ubuntu
+      nightmare-loader download kali --out ~/isos
+      nightmare-loader download --all --out ~/isos
+      nightmare-loader download --list
+    """
+    from .distros import DISTROS
+
+    # Build the catalogue of downloadable distros (those with a download_url)
+    downloadable = {
+        key: cfg
+        for key, cfg in DISTROS.items()
+        if cfg.get("download_url")
+    }
+
+    if list_only:
+        click.echo("Available distros for download:")
+        click.echo(f"  {'KEY':<20} {'LABEL':<35} {'SIZE (MB)':>10}  URL")
+        click.echo("  " + "-" * 90)
+        for key, cfg in sorted(downloadable.items()):
+            size = cfg.get("download_size_mb", "?")
+            size_str = f"~{size}" if isinstance(size, int) else str(size)
+            url = cfg["download_url"]
+            click.echo(f"  {key:<20} {cfg['label']:<35} {size_str:>10}  {url}")
+        return
+
+    # Decide which keys to process
+    if download_all:
+        keys_to_get = list(sorted(downloadable.keys()))
+    elif distro:
+        if distro not in downloadable:
+            if distro in DISTROS:
+                click.echo(
+                    f"Error: '{distro}' is recognised but has no download URL "
+                    f"(it must be supplied manually).",
+                    err=True,
+                )
+            else:
+                click.echo(
+                    f"Error: unknown distro '{distro}'. "
+                    f"Run 'nightmare-loader download --list' to see available keys.",
+                    err=True,
+                )
+            sys.exit(1)
+        keys_to_get = [distro]
+    else:
+        click.echo(
+            "Specify a DISTRO name, use --all, or --list.\n"
+            "  nightmare-loader download --list",
+            err=True,
+        )
+        sys.exit(1)
+
+    out_dir = Path(out).expanduser().resolve()
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    failed: list[str] = []
+    for key in keys_to_get:
+        if not _download_iso_url(key, downloadable[key], out_dir):
+            failed.append(key)
+
+    if failed:
+        click.echo(f"Error: {len(failed)} download(s) failed: {', '.join(failed)}", err=True)
+        sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
+# nightmare-loader kit
+# ---------------------------------------------------------------------------
+
+@cli.command("kit")
+@click.option(
+    "--out", "-o",
+    default=".",
+    show_default=True,
+    help="Directory to download ISOs into.",
+)
+@click.option(
+    "--download", "do_download",
+    is_flag=True,
+    default=False,
+    help="Actually download all auto-downloadable ISOs in the kit (otherwise just lists them).",
+)
+@click.option(
+    "--category", "-c",
+    type=click.Choice(["repair", "desktop", "security", "advanced", "all"],
+                      case_sensitive=False),
+    default="all",
+    show_default=True,
+    help="Only show/download ISOs from this category.",
+)
+def kit(out: str, do_download: bool, category: str) -> None:
+    """
+    Show (or download) the curated 64 GB full-kit collection.
+
+    \b
+    Fits everything you need to never be stuck without a working computer:
+      • Windows 10/11 repair & recovery tools
+      • General-purpose Linux desktops
+      • Security & privacy distros
+      • Advanced / power-user distros
+
+    \b
+    Examples:
+      nightmare-loader kit                         (list the full kit)
+      nightmare-loader kit --category repair       (list repair tools only)
+      nightmare-loader kit --download --out ~/isos (download everything)
+      nightmare-loader kit --download -c repair    (download repair tools only)
+
+    \b
+    NOTE: Windows ISOs and Hiren's BootCD PE cannot be downloaded
+    automatically.  Download them manually, then add them normally, e.g.:
+      nightmare-loader add /dev/sdX Win11_*.iso
+    You may use --label to change the displayed menu name, but it does not
+    change ISO detection or boot handling.
+    """
+    from .distros import DISTROS, KIT_64GB
+
+    cat_filter = category.lower()
+    rows = [
+        (key, size_mb, cat, desc)
+        for key, size_mb, cat, desc in KIT_64GB
+        if cat_filter == "all" or cat == cat_filter
+    ]
+
+    # ── Header ────────────────────────────────────────────────────────────
+    click.echo()
+    click.echo("  Nightmare Loader – 64 GB Full Kit")
+    click.echo("  " + "=" * 70)
+
+    manual_entries = [
+        ("win11-repair", 5800, "Windows 11 ISO – repair/install",
+         "https://www.microsoft.com/en-us/software-download/windows11"),
+        ("win10-repair", 4700, "Windows 10 ISO – repair/install",
+         "https://www.microsoft.com/en-us/software-download/windows10"),
+        ("hirens",        700, "Hiren's BootCD PE – full Windows repair suite",
+         "https://www.hirensbootcd.org/download/"),
+    ]
+    if cat_filter in ("all", "repair"):
+        click.echo()
+        click.echo("  ── Manual download required (Windows) ──────────────────────────")
+        for key, size_mb, desc, url in manual_entries:
+            click.echo(f"  {'[manual]':<12}  {key:<16}  ~{size_mb:>5} MB  {desc}")
+            click.echo(f"  {'':12}  {'':16}  {'':>8}     {url}")
+        manual_total = sum(s for _, s, _, _ in manual_entries)
+        click.echo(f"  {'':12}  {'SUBTOTAL':<16}  ~{manual_total:>5} MB")
+
+    # ── Auto-downloadable ─────────────────────────────────────────────────
+    categories_seen: set[str] = set()
+    subtotal = 0
+    for key, size_mb, cat, desc in rows:
+        if cat not in categories_seen:
+            cat_title = {
+                "repair":   "Repair & Recovery tools (auto-download)",
+                "desktop":  "General-purpose Linux desktops",
+                "security": "Security & privacy",
+                "advanced": "Advanced / power-user",
+            }.get(cat, cat.title())
+            click.echo()
+            click.echo(f"  ── {cat_title} {'─' * (52 - len(cat_title))}")
+            categories_seen.add(cat)
+        cfg = DISTROS.get(key, {})
+        has_url = bool(cfg.get("download_url"))
+        status = "✓" if has_url else "manual"
+        click.echo(f"  {status:<12}  {key:<16}  ~{size_mb:>5} MB  {desc}")
+        subtotal += size_mb
+
+    # ── Totals ────────────────────────────────────────────────────────────
+    click.echo()
+    click.echo("  " + "─" * 70)
+    if cat_filter == "all":
+        manual_total = sum(s for _, s, _, _ in manual_entries)
+        grand = subtotal + manual_total
+        click.echo(f"  Auto-downloadable total : ~{subtotal:>6} MB  ({subtotal / 1024:.1f} GB)")
+        click.echo(f"  Manual (Windows) total  : ~{manual_total:>6} MB  ({manual_total / 1024:.1f} GB)")
+        click.echo(f"  Grand total             : ~{grand:>6} MB  ({grand / 1024:.1f} GB)")
+        remaining = 64 * 1024 - grand
+        click.echo(f"  Space remaining on 64 GB: ~{remaining:>6} MB  ({remaining / 1024:.1f} GB)")
+    else:
+        click.echo(f"  Subtotal ({category}): ~{subtotal:>6} MB  ({subtotal / 1024:.1f} GB)")
+    click.echo()
+
+    # ── Download ──────────────────────────────────────────────────────────
+    if do_download:
+        downloadable_keys = [
+            key for key, _, _, _ in rows
+            if DISTROS.get(key, {}).get("download_url")
+        ]
+        if not downloadable_keys:
+            click.echo("Nothing to download in this category.")
+            return
+        click.echo(f"Downloading {len(downloadable_keys)} ISO(s) to {out} …")
+        click.echo()
+        out_dir = Path(out).expanduser().resolve()
+        out_dir.mkdir(parents=True, exist_ok=True)
+        failed: list[str] = []
+        for key in downloadable_keys:
+            if not _download_iso_url(key, DISTROS[key], out_dir):
+                failed.append(key)
+        if failed:
+            click.echo(
+                f"Error: {len(failed)} download(s) failed: {', '.join(failed)}",
+                err=True,
+            )
+            sys.exit(1)
 
 
 # ---------------------------------------------------------------------------
