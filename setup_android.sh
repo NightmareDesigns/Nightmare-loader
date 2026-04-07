@@ -63,7 +63,7 @@ echo
 step "[2/4] Installing dependencies..."
 pkg install -y python python-pip parted dosfstools util-linux
 
-# Optional: tsu for root access (needed for drive partitioning)
+# Optional: tsu for root access (needed for drive partitioning and ISO build)
 if ! command -v tsu >/dev/null 2>&1; then
     warn "tsu (Termux root helper) not found."
     warn "Drive partitioning requires root. Install with: pkg install tsu"
@@ -111,6 +111,14 @@ echo " Root-only operations (requires rooted device + tsu):"
 echo "   pkg install tsu"
 echo "   tsu -c 'nightmare-loader prepare /dev/sda'"
 echo "   tsu -c 'nightmare-loader add /dev/sda my.iso'"
+echo
+echo " Building a bootable live ISO from your phone (rooted device):"
+echo "   Install extra build tools:"
+echo "     pkg install squashfs-tools xorriso mtools curl cpio gzip qemu-user-x86-64"
+echo "   Then build (runs as root via tsu):"
+echo "     tsu -c 'bash build_iso.sh --output /sdcard/nightmare-loader-live.iso'"
+echo "   Write the ISO to a USB drive with EtchDroid (no root needed on Android),"
+echo "   or serve it directly as a virtual drive via DriveDroid (root required)."
 echo
 echo " Termux:Widget shortcut:"
 echo "   Install 'Termux:Widget' from F-Droid, add the widget to"
