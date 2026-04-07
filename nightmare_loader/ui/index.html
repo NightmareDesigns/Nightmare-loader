@@ -522,6 +522,172 @@
       border: none;
     }
 
+    /* ── NIGHTMARE ENHANCEMENTS ────────────────────────────────────── */
+
+    /* Boot splash */
+    #boot-splash {
+      position: fixed;
+      inset: 0;
+      z-index: 200;
+      background: #000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      transition: opacity 0.9s ease;
+    }
+    #boot-splash.fade-out { opacity: 0; pointer-events: none; }
+    #boot-splash.gone     { display: none; }
+
+    #splash-title {
+      font-family: 'Impact', 'Arial Black', Arial, sans-serif;
+      font-size: clamp(2.8rem, 8vw, 7.5rem);
+      font-weight: 900;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--red);
+      text-shadow:
+        0 0 12px #ff0000,
+        0 0 35px #ff000066,
+        0 0 70px #cc000033,
+        3px 4px 8px #000;
+      opacity: 0;
+      transform: scale(0.82);
+      transition: opacity 0.9s ease, transform 0.9s ease;
+      text-align: center;
+      user-select: none;
+    }
+    #splash-title.show { opacity: 1; transform: scale(1); }
+
+    #splash-sub {
+      font-family: 'Courier New', monospace;
+      font-size: clamp(0.6rem, 1.4vw, 0.92rem);
+      letter-spacing: 0.42em;
+      text-transform: uppercase;
+      color: var(--green-dim);
+      margin-top: 8px;
+      opacity: 0;
+      transition: opacity 0.6s ease 0.5s;
+    }
+    #splash-sub.show { opacity: 0.75; }
+
+    #boot-msgs {
+      margin-top: 32px;
+      font-family: 'Courier New', monospace;
+      font-size: clamp(0.65rem, 1.2vw, 0.78rem);
+      color: var(--green-dim);
+      width: min(640px, 92vw);
+      min-height: 180px;
+      overflow: hidden;
+    }
+    .boot-line {
+      display: block;
+      line-height: 1.8;
+      opacity: 0;
+      animation: boot-appear 0.12s ease forwards;
+    }
+    .boot-line.ok   { color: var(--green); }
+    .boot-line.warn { color: #ffaa00; }
+    .boot-line.err  { color: #ff4444; }
+    .boot-line.head { color: var(--red); letter-spacing: 0.08em; }
+    @keyframes boot-appear { to { opacity: 1; } }
+
+    #boot-cursor {
+      display: inline-block;
+      width: 8px;
+      height: 0.9em;
+      background: var(--green);
+      vertical-align: bottom;
+      animation: cur-blink 0.5s step-end infinite;
+    }
+    @keyframes cur-blink { 50% { opacity: 0; } }
+
+    /* CRT scanlines */
+    #scanlines {
+      position: fixed;
+      inset: 0;
+      z-index: 6;
+      pointer-events: none;
+      background: repeating-linear-gradient(
+        to bottom,
+        transparent 0px,
+        transparent 2px,
+        rgba(0,0,0,0.07) 2px,
+        rgba(0,0,0,0.07) 4px
+      );
+    }
+
+    /* Ember particles */
+    .ember {
+      position: fixed;
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 3;
+      animation: ember-rise linear forwards;
+    }
+    @keyframes ember-rise {
+      0%   { opacity: 0.9; transform: translateY(0) translateX(0) scale(1); }
+      60%  { opacity: 0.5; }
+      100% { opacity: 0;   transform: translateY(-88vh) translateX(var(--ex-drift)) scale(0.15); }
+    }
+
+    /* Blood pool at bottom */
+    #blood-pool {
+      position: fixed;
+      bottom: 28px;
+      left: 0; right: 0;
+      height: 14px;
+      z-index: 4;
+      pointer-events: none;
+    }
+    .pool-blob {
+      position: absolute;
+      bottom: 0;
+      height: 100%;
+      border-radius: 50% 50% 0 0;
+      background: radial-gradient(ellipse at 50% 100%, var(--red-deep), var(--red-dark));
+      transform-origin: bottom center;
+      animation: pool-appear 5s ease-out forwards;
+    }
+    @keyframes pool-appear {
+      0%   { transform: scaleX(0); opacity: 0; }
+      25%  { opacity: 0.7; }
+      100% { transform: scaleX(1); opacity: 0.45; }
+    }
+
+    /* Panel glow pulse */
+    @keyframes panel-glow {
+      0%, 100% {
+        box-shadow: 0 0 18px rgba(139,0,0,0.25), inset 0 0 30px rgba(0,0,0,0.5);
+      }
+      50% {
+        box-shadow: 0 0 36px rgba(200,0,0,0.55), inset 0 0 30px rgba(0,0,0,0.5);
+      }
+    }
+    .panel { animation: panel-glow 5s ease-in-out infinite; }
+
+    /* Body CRT flicker */
+    @keyframes crt-flicker {
+      0%, 87%, 93%, 100% { opacity: 1; }
+      88%  { opacity: 0.87; }
+      89%  { opacity: 0.96; }
+      90%  { opacity: 0.83; }
+      91%  { opacity: 0.92; }
+      92%  { opacity: 0.86; }
+    }
+    body { animation: crt-flicker 18s infinite; }
+
+    /* Status READY pulse */
+    @keyframes ready-pulse {
+      0%, 100% { color: var(--green); text-shadow: none; }
+      50%       { color: #00ff41; text-shadow: 0 0 10px #00ff41; }
+    }
+    #sb-status { animation: ready-pulse 2.5s ease-in-out infinite; }
+
+    /* Subtitle blink cursor effect */
+    #subtitle { animation: cur-blink 1.5s step-end infinite; }
+
     /* ── Confirm modal ─────────────────────────────────────────────── */
     #modal-overlay {
       display: none;
@@ -566,6 +732,19 @@
 
 <!-- Matrix canvas -->
 <canvas id="matrix-canvas"></canvas>
+
+<!-- Boot splash screen -->
+<div id="boot-splash">
+  <div id="splash-title">NIGHTMARE LOADER</div>
+  <div id="splash-sub">Multi-ISO Boot &nbsp;·&nbsp; UEFI + BIOS &nbsp;·&nbsp; v∞</div>
+  <div id="boot-msgs"><span id="boot-cursor"></span></div>
+</div>
+
+<!-- CRT scanlines overlay -->
+<div id="scanlines"></div>
+
+<!-- Blood pool strip (accumulates at bottom) -->
+<div id="blood-pool"></div>
 
 <div id="app">
 
@@ -800,19 +979,19 @@
 
 <script>
 /* ═══════════════════════════════════════════════════════════════════
-   MATRIX RAIN
+   MATRIX RAIN  (green + blood-red columns)
 ═══════════════════════════════════════════════════════════════════ */
 (function () {
   const canvas = document.getElementById('matrix-canvas');
   const ctx = canvas.getContext('2d');
 
-  // Katakana block + ASCII symbols + numbers
+  // Katakana + ASCII + horror glyphs
   const CHARS =
     'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン' +
-    'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*<>?/\\|';
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*<>?/\\|☠†‡⚰⚡▓▒░';
 
   const FONT_SIZE = 14;
-  let cols, drops, speeds, bright;
+  let cols, drops, speeds, bright, blood;
 
   function resize() {
     canvas.width  = window.innerWidth;
@@ -821,6 +1000,7 @@
     drops  = Array.from({ length: cols }, () => Math.random() * -canvas.height / FONT_SIZE);
     speeds = Array.from({ length: cols }, () => 0.4 + Math.random() * 1.2);
     bright = Array.from({ length: cols }, () => Math.random() > 0.92);
+    blood  = Array.from({ length: cols }, () => Math.random() > 0.87);
   }
 
   resize();
@@ -834,14 +1014,25 @@
     ctx.font = `${FONT_SIZE}px 'Courier New', monospace`;
 
     for (let i = 0; i < cols; i++) {
-      const y = Math.floor(drops[i]) * FONT_SIZE;
+      const y  = Math.floor(drops[i]) * FONT_SIZE;
       const ch = CHARS[Math.floor(Math.random() * CHARS.length)];
 
-      if (bright[i]) {
-        // Leading character: white-green
-        ctx.fillStyle = '#ccffcc';
+      if (blood[i]) {
+        // Blood-red column
+        if (bright[i]) {
+          ctx.fillStyle  = '#ffbbbb';
+          ctx.shadowColor = '#ff0000';
+          ctx.shadowBlur  = 10;
+        } else {
+          const v = 0.4 + 0.6 * Math.random();
+          ctx.fillStyle = `rgba(${Math.floor(140 + 90 * v)},0,0,${v})`;
+          ctx.shadowBlur = 0;
+        }
+      } else if (bright[i]) {
+        // Leading green character: white-green
+        ctx.fillStyle  = '#ccffcc';
         ctx.shadowColor = '#00ff41';
-        ctx.shadowBlur = 8;
+        ctx.shadowBlur  = 8;
       } else {
         // Column body: varying green shades
         const intensity = 0.5 + 0.5 * Math.random();
@@ -858,6 +1049,7 @@
         drops[i]  = Math.random() * -20;
         speeds[i] = 0.4 + Math.random() * 1.2;
         bright[i] = Math.random() > 0.92;
+        blood[i]  = Math.random() > 0.87;
       }
     }
   }
@@ -943,6 +1135,149 @@
 
   // Wait a moment for layout to stabilise, then start
   setTimeout(scheduleNext, 600);
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   BOOT SPLASH
+═══════════════════════════════════════════════════════════════════ */
+(function () {
+  const splash   = document.getElementById('boot-splash');
+  const titleEl  = document.getElementById('splash-title');
+  const subEl    = document.getElementById('splash-sub');
+  const msgsEl   = document.getElementById('boot-msgs');
+  const cursor   = document.getElementById('boot-cursor');
+
+  const MSGS = [
+    { t: '[ SYS ] NIGHTMARE LOADER v\u221e \u2014 SYSTEM BOOT',          c: 'head', d: 120 },
+    { t: '[ CPU ] Architecture: x86_64  \u2014  cores: detected',        c: 'ok',   d: 280 },
+    { t: '[ MEM ] Memory subsystem check ................. PASS',        c: 'ok',   d: 230 },
+    { t: '[ USB ] Enumerating removable media ...',                      c: '',     d: 310 },
+    { t: '[ BLK ] Block device scan ...................... DONE',         c: 'ok',   d: 230 },
+    { t: '[ ISO ] ISO vault engine ...................... ARMED',         c: 'ok',   d: 210 },
+    { t: '[ GRB ] GRUB2 interface ...................... READY',          c: 'ok',   d: 210 },
+    { t: '[ NET ] Binding 127.0.0.1:8321 ...',                           c: 'ok',   d: 290 },
+    { t: '[ VFX ] Matrix rain \u2592\u2593\u2588 ........................ RUNNING',  c: 'ok',   d: 190 },
+    { t: '[ VFX ] Blood drip engine ................... DRIPPING',       c: 'warn', d: 190 },
+    { t: '[ VFX ] Ember particle system ............... IGNITED',        c: 'warn', d: 190 },
+    { t: '[ SYS ] *** ENTER THE NIGHTMARE ***',                          c: 'head', d: 420 },
+  ];
+
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  function addLine(text, cls) {
+    const line = document.createElement('span');
+    line.className = 'boot-line ' + (cls || '');
+    line.textContent = '> ' + text;
+    msgsEl.insertBefore(line, cursor);
+  }
+
+  async function run() {
+    await sleep(280);
+    titleEl.classList.add('show');
+    subEl.classList.add('show');
+    await sleep(520);
+    for (const m of MSGS) {
+      await sleep(m.d);
+      addLine(m.t, m.c);
+    }
+    await sleep(750);
+    splash.classList.add('fade-out');
+    await sleep(950);
+    splash.classList.add('gone');
+  }
+
+  run();
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   EMBER / ASH PARTICLES
+═══════════════════════════════════════════════════════════════════ */
+(function () {
+  function spawnEmber() {
+    const el       = document.createElement('div');
+    el.className   = 'ember';
+    const x        = Math.random() * 100;
+    const drift    = ((Math.random() - 0.5) * 90).toFixed(1);
+    const dur      = (3.5 + Math.random() * 6).toFixed(2);
+    const size     = (1.5 + Math.random() * 3).toFixed(1);
+    const isBlood  = Math.random() > 0.48;
+    const col      = isBlood ? '#cc0000' : '#00cc44';
+    el.style.cssText =
+      `left:${x}vw;bottom:28px;width:${size}px;height:${size}px;` +
+      `background:${col};box-shadow:0 0 6px 2px ${col};` +
+      `--ex-drift:${drift}px;animation-duration:${dur}s;`;
+    document.body.appendChild(el);
+    // Extra buffer ensures the CSS animation has fully finished before DOM removal
+    setTimeout(() => el.remove(), parseFloat(dur) * 1000 + 60);
+  }
+
+  function schedule() {
+    spawnEmber();
+    setTimeout(schedule, 140 + Math.random() * 480);
+  }
+
+  setTimeout(schedule, 900);
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   BLOOD POOL  (drips accumulate as blobs at the bottom edge)
+═══════════════════════════════════════════════════════════════════ */
+(function () {
+  const pool = document.getElementById('blood-pool');
+
+  function spawnBlob() {
+    const blob = document.createElement('div');
+    blob.className = 'pool-blob';
+    const w = 20 + Math.random() * 60;
+    const x = Math.random() * (window.innerWidth - w);
+    blob.style.cssText = `left:${x}px;width:${w}px;`;
+    pool.appendChild(blob);
+    // Lifetime must exceed the pool-appear animation duration (5s) plus display time
+    const BLOB_LIFETIME_MS = 12000;
+    setTimeout(() => blob.remove(), BLOB_LIFETIME_MS);
+  }
+
+  function schedule() {
+    spawnBlob();
+    setTimeout(schedule, 1800 + Math.random() * 3000);
+  }
+
+  setTimeout(schedule, 2500);
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   PANEL GLITCH  (random brief distortion on a random panel)
+═══════════════════════════════════════════════════════════════════ */
+(function () {
+  function glitch() {
+    const panels = document.querySelectorAll('.panel');
+    if (!panels.length) return;
+    const p  = panels[Math.floor(Math.random() * panels.length)];
+    const tx = ((Math.random() - 0.5) * 6).toFixed(1);
+    const sk = ((Math.random() - 0.5) * 0.9).toFixed(2);
+    p.style.transform = `translate(${tx}px,0) skewX(${sk}deg)`;
+    p.style.filter    = `hue-rotate(${Math.floor(Math.random() * 55)}deg) brightness(1.18)`;
+    setTimeout(() => { p.style.transform = ''; p.style.filter = ''; },
+               55 + Math.floor(Math.random() * 90));
+    // occasionally double-glitch
+    if (Math.random() > 0.7) {
+      setTimeout(() => {
+        p.style.transform = `translate(${-tx}px,0)`;
+        setTimeout(() => { p.style.transform = ''; }, 40);
+      }, 120);
+    }
+  }
+
+  function schedule() {
+    glitch();
+    setTimeout(schedule, 3200 + Math.random() * 5500);
+  }
+
+  setTimeout(schedule, 6000);
 })();
 
 
@@ -1392,7 +1727,8 @@ window.addEventListener('load', () => {
   checkPlatform();
   checkRoot();
   refreshDrives();
-  log('Nightmare Loader UI initialised.', 'head');
+  log('\u2620  NIGHTMARE LOADER \u2014 ALL SYSTEMS ARMED', 'head');
+  log('Matrix initialized. Blood drip armed. Enter the nightmare.', 'ok');
 });
 </script>
 </body>
