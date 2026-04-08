@@ -53,6 +53,31 @@ DEFAULT_PORT = 8321
 
 
 # ---------------------------------------------------------------------------
+# Path validation helper
+# ---------------------------------------------------------------------------
+
+def _validated_device_path(device: str) -> Path:
+    """
+    Validate and normalise a Windows device path supplied by the caller.
+
+    On Windows the "device" is a drive-letter root (e.g. ``I:\\``), but the
+    server accepts arbitrary user input.  This helper:
+
+    * Rejects strings containing null bytes or ASCII control characters.
+    * Resolves the path to its absolute canonical form (eliminates ``..``).
+    * Raises ``ValueError`` if the resulting path is not an existing directory.
+
+    Returns the resolved :class:`~pathlib.Path`.
+    """
+    if any(ord(c) < 0x20 for c in device):
+        raise ValueError("Device path contains invalid control characters.")
+    resolved = Path(device).resolve()
+    if not resolved.is_dir():
+        raise ValueError(f"Device path is not an accessible directory: {device}")
+    return resolved
+
+
+# ---------------------------------------------------------------------------
 # In-process ISO download registry  (id → state dict)
 # ---------------------------------------------------------------------------
 
@@ -196,7 +221,8 @@ class _Handler(BaseHTTPRequestHandler):
             if sys.platform == "win32":
                 # On Windows the device is an already-accessible drive letter –
                 # no mount/umount needed.
-                state   = load_state(str(Path(device)))
+                mp      = _validated_device_path(device)
+                state   = load_state(str(mp))
                 entries = state.get("entries", [])
             else:
                 from .drive import _partition_name, mount, unmount
@@ -333,9 +359,9 @@ class _Handler(BaseHTTPRequestHandler):
             if sys.platform == "win32":
                 # On Windows the device is an already-accessible drive letter
                 # (e.g. "I:\\" or "I:/") – no mount/umount needed.
-                mp = str(Path(device))
-                state    = load_state(mp)
-                dest_dir = Path(mp) / ISO_DIR
+                mp       = _validated_device_path(device)
+                state    = load_state(str(mp))
+                dest_dir = mp / ISO_DIR
                 dest_dir.mkdir(parents=True, exist_ok=True)
 
                 if do_copy:
@@ -351,9 +377,9 @@ class _Handler(BaseHTTPRequestHandler):
                     if e["filename"] != iso_path_obj.name
                 ]
                 state["entries"].append(entry)
-                save_state(mp, state)
+                save_state(str(mp), state)
                 drive_label = state.get("label", "NIGHTMARE")
-                write_grub_cfg(mp, state["entries"], label=drive_label)
+                write_grub_cfg(str(mp), state["entries"], label=drive_label)
             else:
                 from .drive import _partition_name, mount, unmount
 
@@ -409,8 +435,8 @@ class _Handler(BaseHTTPRequestHandler):
             if sys.platform == "win32":
                 # On Windows the device is an already-accessible drive letter –
                 # no mount/umount needed.
-                mp    = str(Path(device))
-                state = load_state(mp)
+                mp    = _validated_device_path(device)
+                state = load_state(str(mp))
                 before = len(state["entries"])
                 state["entries"] = [
                     e for e in state["entries"] if e["filename"] != iso_name
@@ -419,13 +445,13 @@ class _Handler(BaseHTTPRequestHandler):
                     self._json({"error": f"'{iso_name}' not found on {device}"}, 404)
                     return
 
-                iso_file = Path(mp) / ISO_DIR / iso_name
+                iso_file = mp / ISO_DIR / iso_name
                 if iso_file.exists():
                     iso_file.unlink()
 
-                save_state(mp, state)
+                save_state(str(mp), state)
                 drive_label = state.get("label", "NIGHTMARE")
-                write_grub_cfg(mp, state["entries"], label=drive_label)
+                write_grub_cfg(str(mp), state["entries"], label=drive_label)
             else:
                 from .drive import _partition_name, mount, unmount
 
