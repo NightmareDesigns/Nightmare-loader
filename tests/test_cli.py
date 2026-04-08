@@ -6,6 +6,7 @@ Termux/Android non-root support.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -424,9 +425,8 @@ class TestTermuxPathHelpers:
 
     def test_termux_bash_fallback_uses_prefix_env(self):
         """When bash is not on PATH, PREFIX env var should be used for the fallback path."""
-        import os as _os
         with patch("shutil.which", return_value=None), \
-             patch.dict(_os.environ, {"PREFIX": "/data/data/com.termux/files/usr"}):
+             patch.dict(os.environ, {"PREFIX": "/data/data/com.termux/files/usr"}):
             result = _termux_bash()
         assert result == "/data/data/com.termux/files/usr/bin/bash"
 

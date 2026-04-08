@@ -60,6 +60,8 @@ from .iso import ISOError, get_iso_metadata
 from .server import DEFAULT_PORT, start_server
 
 
+_BYTES_PER_GB = 1_073_741_824
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -232,7 +234,7 @@ def prepare(device: str, layout: str, label: str, yes: bool) -> None:
     if not yes:
         try:
             info = get_drive_info(device)
-            size_gb = int(info["size"]) / 1_073_741_824
+            size_gb = int(info["size"]) / _BYTES_PER_GB
             model = info["model"] or "unknown model"
             click.echo(
                 f"About to erase {device} ({model}, {size_gb:.1f} GB) "
@@ -514,7 +516,7 @@ def list_drives() -> None:
     click.echo("Removable drives:")
     for d in drives:
         if str(d["size"]).isdigit():
-            size_str = f"{int(d['size']) / 1_073_741_824:.1f} GB"
+            size_str = f"{int(d['size']) / _BYTES_PER_GB:.1f} GB"
         else:
             size_str = "? GB"
         model = d["model"] or "unknown"
