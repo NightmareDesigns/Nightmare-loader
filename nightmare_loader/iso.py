@@ -119,7 +119,7 @@ def list_iso_files(iso_path: str | Path) -> list[str]:
     ISOError
         If the file does not exist.
     """
-    iso_path = Path(iso_path)
+    iso_path = Path(iso_path).resolve()
     if not iso_path.exists():
         raise ISOError(f"ISO file not found: {iso_path}")
 
@@ -194,7 +194,7 @@ def get_iso_label(iso_path: str | Path) -> str:
 
     Falls back to the filename stem if the label cannot be determined.
     """
-    iso_path = Path(iso_path)
+    iso_path = Path(iso_path).resolve()
 
     # 1. Pure-Python PVD read (works with zero external tools)
     try:
@@ -261,7 +261,7 @@ def get_iso_metadata(iso_path: str | Path) -> dict:
         "cmdline": str | None,
     }``
     """
-    iso_path = Path(iso_path)
+    iso_path = Path(iso_path).resolve()
     if not iso_path.exists():
         raise ISOError(f"ISO file not found: {iso_path}")
 
