@@ -17,6 +17,7 @@ import pytest
 from nightmare_loader.iso import (
     ISOError,
     _7z_cmd,
+    _isoinfo_available,
     _pvd_label,
     _read_pvd,
     get_iso_label,
@@ -271,3 +272,37 @@ class TestGetIsoMetadata:
     def test_raises_for_nonexistent_iso(self):
         with pytest.raises(ISOError):
             get_iso_metadata("/nonexistent/path/to.iso")
+
+
+# ---------------------------------------------------------------------------
+# _isoinfo_available – must not raise on missing binary
+# ---------------------------------------------------------------------------
+
+class TestIsoInfoAvailable:
+    def test_returns_false_when_binary_not_found(self):
+        """FileNotFoundError from missing isoinfo binary must return False, not raise."""
+        with patch("subprocess.run", side_effect=FileNotFoundError("isoinfo not found")):
+            result = _isoinfo_available()
+        assert result is False
+
+    def test_returns_false_when_oserror(self):
+        """Any OSError (e.g. PermissionError) must return False, not raise."""
+        with patch("subprocess.run", side_effect=OSError("os error")):
+            result = _isoinfo_available()
+        assert result is False
+
+    def test_returns_false_when_nonzero_exit(self):
+        """Non-zero returncode means isoinfo is not usable."""
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+        with patch("subprocess.run", return_value=mock_result):
+            result = _isoinfo_available()
+        assert result is False
+
+    def test_returns_true_when_available(self):
+        """Zero returncode means isoinfo is available."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        with patch("subprocess.run", return_value=mock_result):
+            result = _isoinfo_available()
+        assert result is True

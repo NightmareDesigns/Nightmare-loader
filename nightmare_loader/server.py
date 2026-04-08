@@ -191,20 +191,27 @@ class _Handler(BaseHTTPRequestHandler):
             self._json({"device": "", "entries": [], "error": "No device specified"})
             return
         try:
-            from .drive import _partition_name, mount, unmount
             from .grub  import load_state
 
-            partition = _partition_name(device, 1)
-            with tempfile.TemporaryDirectory(prefix="nl-ui-") as tmp:
-                mount(partition, tmp)
-                try:
-                    state   = load_state(tmp)
-                    entries = state.get("entries", [])
-                finally:
+            if sys.platform == "win32":
+                # On Windows the device is an already-accessible drive letter –
+                # no mount/umount needed.
+                state   = load_state(str(Path(device)))
+                entries = state.get("entries", [])
+            else:
+                from .drive import _partition_name, mount, unmount
+
+                partition = _partition_name(device, 1)
+                with tempfile.TemporaryDirectory(prefix="nl-ui-") as tmp:
+                    mount(partition, tmp)
                     try:
-                        unmount(tmp)
-                    except Exception:
-                        pass
+                        state   = load_state(tmp)
+                        entries = state.get("entries", [])
+                    finally:
+                        try:
+                            unmount(tmp)
+                        except Exception:
+                            pass
             self._json({"device": device, "entries": entries})
         except Exception as exc:
             self._json({"device": device, "entries": [], "error": str(exc)})
@@ -232,6 +239,18 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if layout not in ("hybrid", "gpt"):
             self._json({"error": "layout must be 'hybrid' or 'gpt'"}, 400)
+            return
+
+        if sys.platform == "win32":
+            self._json({
+                "ok": False,
+                "error": (
+                    "Drive preparation (partitioning + GRUB install) requires Linux tools "
+                    "(parted, mkfs.fat, grub-install) that are not available on Windows. "
+                    "Prepare the drive from a Linux environment or WSL 2, then use "
+                    "Nightmare Loader on Windows to add ISOs to the prepared drive."
+                ),
+            }, 500)
             return
 
         try:
@@ -305,42 +324,68 @@ class _Handler(BaseHTTPRequestHandler):
 
         try:
             from .iso   import get_iso_metadata, ISOError
-            from .drive import _partition_name, mount, unmount
             from .grub  import load_state, save_state, write_grub_cfg, ISO_DIR
 
             iso_path_obj = Path(iso_path)
             meta         = get_iso_metadata(iso_path_obj)
             menu_label   = label or f"{meta['distro_label']} ({meta['filename']})"
 
-            partition = _partition_name(device, 1)
-            with tempfile.TemporaryDirectory(prefix="nl-ui-") as mp:
-                mount(partition, mp)
-                try:
-                    state       = load_state(mp)
-                    dest_dir    = Path(mp) / ISO_DIR
-                    dest_dir.mkdir(parents=True, exist_ok=True)
+            if sys.platform == "win32":
+                # On Windows the device is an already-accessible drive letter
+                # (e.g. "I:\\" or "I:/") – no mount/umount needed.
+                mp = str(Path(device))
+                state    = load_state(mp)
+                dest_dir = Path(mp) / ISO_DIR
+                dest_dir.mkdir(parents=True, exist_ok=True)
 
-                    if do_copy:
-                        shutil.copy2(str(iso_path_obj), str(dest_dir / iso_path_obj.name))
+                if do_copy:
+                    shutil.copy2(str(iso_path_obj), str(dest_dir / iso_path_obj.name))
 
-                    entry = {
-                        **meta,
-                        "isofile": f"/{ISO_DIR}/{iso_path_obj.name}",
-                        "label":   menu_label,
-                    }
-                    state["entries"] = [
-                        e for e in state["entries"]
-                        if e["filename"] != iso_path_obj.name
-                    ]
-                    state["entries"].append(entry)
-                    save_state(mp, state)
-                    drive_label = state.get("label", "NIGHTMARE")
-                    write_grub_cfg(mp, state["entries"], label=drive_label)
-                finally:
+                entry = {
+                    **meta,
+                    "isofile": f"/{ISO_DIR}/{iso_path_obj.name}",
+                    "label":   menu_label,
+                }
+                state["entries"] = [
+                    e for e in state["entries"]
+                    if e["filename"] != iso_path_obj.name
+                ]
+                state["entries"].append(entry)
+                save_state(mp, state)
+                drive_label = state.get("label", "NIGHTMARE")
+                write_grub_cfg(mp, state["entries"], label=drive_label)
+            else:
+                from .drive import _partition_name, mount, unmount
+
+                partition = _partition_name(device, 1)
+                with tempfile.TemporaryDirectory(prefix="nl-ui-") as mp:
+                    mount(partition, mp)
                     try:
-                        unmount(mp)
-                    except Exception:
-                        pass
+                        state       = load_state(mp)
+                        dest_dir    = Path(mp) / ISO_DIR
+                        dest_dir.mkdir(parents=True, exist_ok=True)
+
+                        if do_copy:
+                            shutil.copy2(str(iso_path_obj), str(dest_dir / iso_path_obj.name))
+
+                        entry = {
+                            **meta,
+                            "isofile": f"/{ISO_DIR}/{iso_path_obj.name}",
+                            "label":   menu_label,
+                        }
+                        state["entries"] = [
+                            e for e in state["entries"]
+                            if e["filename"] != iso_path_obj.name
+                        ]
+                        state["entries"].append(entry)
+                        save_state(mp, state)
+                        drive_label = state.get("label", "NIGHTMARE")
+                        write_grub_cfg(mp, state["entries"], label=drive_label)
+                    finally:
+                        try:
+                            unmount(mp)
+                        except Exception:
+                            pass
 
             self._json({"ok": True, "message": f"Added '{menu_label}' to {device}."})
         except Exception as exc:
@@ -359,34 +404,56 @@ class _Handler(BaseHTTPRequestHandler):
             return
 
         try:
-            from .drive import _partition_name, mount, unmount
             from .grub  import load_state, save_state, write_grub_cfg, ISO_DIR
 
-            partition = _partition_name(device, 1)
-            with tempfile.TemporaryDirectory(prefix="nl-ui-") as mp:
-                mount(partition, mp)
-                try:
-                    state = load_state(mp)
-                    before = len(state["entries"])
-                    state["entries"] = [
-                        e for e in state["entries"] if e["filename"] != iso_name
-                    ]
-                    if len(state["entries"]) == before:
-                        self._json({"error": f"'{iso_name}' not found on {device}"}, 404)
-                        return
+            if sys.platform == "win32":
+                # On Windows the device is an already-accessible drive letter –
+                # no mount/umount needed.
+                mp    = str(Path(device))
+                state = load_state(mp)
+                before = len(state["entries"])
+                state["entries"] = [
+                    e for e in state["entries"] if e["filename"] != iso_name
+                ]
+                if len(state["entries"]) == before:
+                    self._json({"error": f"'{iso_name}' not found on {device}"}, 404)
+                    return
 
-                    iso_file = Path(mp) / ISO_DIR / iso_name
-                    if iso_file.exists():
-                        iso_file.unlink()
+                iso_file = Path(mp) / ISO_DIR / iso_name
+                if iso_file.exists():
+                    iso_file.unlink()
 
-                    save_state(mp, state)
-                    drive_label = state.get("label", "NIGHTMARE")
-                    write_grub_cfg(mp, state["entries"], label=drive_label)
-                finally:
+                save_state(mp, state)
+                drive_label = state.get("label", "NIGHTMARE")
+                write_grub_cfg(mp, state["entries"], label=drive_label)
+            else:
+                from .drive import _partition_name, mount, unmount
+
+                partition = _partition_name(device, 1)
+                with tempfile.TemporaryDirectory(prefix="nl-ui-") as mp:
+                    mount(partition, mp)
                     try:
-                        unmount(mp)
-                    except Exception:
-                        pass
+                        state = load_state(mp)
+                        before = len(state["entries"])
+                        state["entries"] = [
+                            e for e in state["entries"] if e["filename"] != iso_name
+                        ]
+                        if len(state["entries"]) == before:
+                            self._json({"error": f"'{iso_name}' not found on {device}"}, 404)
+                            return
+
+                        iso_file = Path(mp) / ISO_DIR / iso_name
+                        if iso_file.exists():
+                            iso_file.unlink()
+
+                        save_state(mp, state)
+                        drive_label = state.get("label", "NIGHTMARE")
+                        write_grub_cfg(mp, state["entries"], label=drive_label)
+                    finally:
+                        try:
+                            unmount(mp)
+                        except Exception:
+                            pass
 
             self._json({"ok": True, "message": f"Removed '{iso_name}' from {device}."})
         except Exception as exc:

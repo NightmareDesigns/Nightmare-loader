@@ -36,10 +36,13 @@ class ISOError(Exception):
 
 def _isoinfo_available() -> bool:
     """Return True if the ``isoinfo`` binary (from genisoimage/cdrtools) is on PATH."""
-    return subprocess.run(
-        ["isoinfo", "--version"],
-        capture_output=True,
-    ).returncode == 0
+    try:
+        return subprocess.run(
+            ["isoinfo", "--version"],
+            capture_output=True,
+        ).returncode == 0
+    except (FileNotFoundError, OSError):
+        return False
 
 
 def _7z_cmd() -> str | None:
