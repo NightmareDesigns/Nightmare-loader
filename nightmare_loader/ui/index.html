@@ -1107,7 +1107,7 @@
   <div class="os-win" id="win-gemini" style="left:64px;top:380px;width:460px;display:none">
     <div class="win-bar">
       <span class="win-bar-icon">🤖</span>
-      <span class="win-bar-title">Gemini AI — Nightmare Assistant</span>
+      <span class="win-bar-title">Gemini 2.5 AI — Nightmare Assistant</span>
       <div class="win-btns">
         <div class="wbtn wbtn-min"   onclick="minimizeWin('win-gemini')"></div>
         <div class="wbtn wbtn-close" onclick="closeWin('win-gemini')"></div>
@@ -1116,7 +1116,7 @@
     <div class="win-body" style="padding:0;gap:0">
       <!-- API key setup screen -->
       <div id="gemini-setup" style="padding:14px 16px;display:flex;flex-direction:column;gap:10px">
-        <div class="panel-title">🤖 Gemini AI — Configuration</div>
+        <div class="panel-title">🤖 Gemini 2.5 AI — Configuration</div>
         <p style="font-size:0.72rem;color:var(--muted);line-height:1.55">
           Enter your Google Gemini API key to activate the Nightmare AI assistant.
           It can help with distros, GRUB config, partitioning, troubleshooting, and more.<br>
@@ -1692,8 +1692,8 @@ function inspectWinPEIso() {
     if (!key) { log('Gemini: no API key provided.', 'err'); return; }
     setGeminiKey(key);
     showChat();
-    addMsg('system', 'Connected to Gemini. The darkness awaits your command\u2026');
-    log('Gemini AI connected.', 'ok');
+    addMsg('system', 'Connected to Gemini 2.5. The darkness awaits your command\u2026 (API key saved \u2014 it will persist across sessions)');
+    log('Gemini 2.5 AI connected. Key saved.', 'ok');
   };
 
   window.clearGeminiKey = function () {
@@ -1732,7 +1732,7 @@ function inspectWinPEIso() {
 
     try {
       const res = await fetch(
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
         {
           method: 'POST',
           headers: {
