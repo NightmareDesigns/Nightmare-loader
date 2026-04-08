@@ -141,7 +141,7 @@ def _install_termux_widget(
         "NL_CMD=" + shlex.quote(exec_path),
         "",
         'if command -v tsu >/dev/null 2>&1; then',
-        '    exec tsu -c "$NL_CMD"',
+        '    exec tsu bash -c "$NL_CMD"',
         "else",
         '    exec "$NL_CMD"',
         "fi",

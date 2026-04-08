@@ -73,7 +73,7 @@ def _require_root() -> None:
                 "\n"
                 "On a rooted device, install tsu and run:\n"
                 "  pkg install tsu\n"
-                "  tsu -c 'nightmare-loader ...'",
+                "  tsu bash -c 'nightmare-loader ...'",
                 err=True,
             )
         else:
@@ -98,7 +98,7 @@ def _require_root_or_mount_point(mount_point: str | None) -> None:
                 "\n"
                 "On a rooted device:\n"
                 "  pkg install tsu\n"
-                "  tsu -c 'nightmare-loader COMMAND DEVICE'\n"
+                "  tsu bash -c 'nightmare-loader COMMAND DEVICE'\n"
                 "\n"
                 "Without root, if Android has already mounted the drive\n"
                 "(e.g. USB OTG at /storage/XXXX-XXXX), use --mount-point:\n"
@@ -253,7 +253,7 @@ def prepare(device: str, layout: str, label: str, yes: bool) -> None:
 
     click.echo(f"Done. Drive {device} is ready. Add ISOs with:")
     if _is_termux():
-        click.echo(f"  tsu -c 'nightmare-loader add {device} <path-to.iso>'")
+        click.echo(f"  tsu bash -c 'nightmare-loader add {device} <path-to.iso>'")
         click.echo(
             "\nWithout root, if Android mounts the drive at /storage/XXXX-XXXX, use:\n"
             f"  nightmare-loader add {device} <path-to.iso> --mount-point /storage/XXXX-XXXX"
@@ -679,7 +679,7 @@ def build_iso_cmd(
     if os.geteuid() != 0:
         if _is_termux():
             if shutil.which("tsu"):
-                cmd = ["tsu", "-c", shlex.join(cmd)]
+                cmd = ["tsu", "bash", "-c", shlex.join(cmd)]
             else:
                 click.echo(
                     "Error: root is required to build the ISO.\n"

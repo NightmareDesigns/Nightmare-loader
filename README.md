@@ -260,14 +260,14 @@ nightmare-loader update /dev/sda --mount-point /storage/ABCD-1234
 ### With root (rooted device)
 
 `tsu` (the Termux root helper) is installed by `setup_android.sh`
-automatically.  Prefix commands with `tsu -c`:
+automatically.  Prefix commands with `tsu bash -c`:
 
 ```bash
 # Prepare a drive (wipes data!)
-tsu -c 'nightmare-loader prepare /dev/sda'
+tsu bash -c 'nightmare-loader prepare /dev/sda'
 
 # Add an ISO (tsu handles mounting automatically)
-tsu -c 'nightmare-loader add /dev/sda ubuntu.iso'
+tsu bash -c 'nightmare-loader add /dev/sda ubuntu.iso'
 ```
 
 ### Building a bootable live ISO from Termux
@@ -288,10 +288,8 @@ nightmare-loader build-iso --output /sdcard/nightmare-loader-live.iso
 Or invoke the build script directly:
 
 ```bash
-tsu -c 'bash build_iso.sh --output /sdcard/nightmare-loader-live.iso'
+tsu bash -c 'bash build_iso.sh --output /sdcard/nightmare-loader-live.iso'
 ```
-
-The build uses Alpine Linux x86_64 (via QEMU emulation) as the live rootfs,
 so the ISO boots on any x86-64 PC.  Once built, write it to a USB drive with
 **EtchDroid** (no root needed) or serve it as a virtual drive with
 **DriveDroid**.  See the [Bootable Live ISO](#bootable-live-iso-use-from-your-phone)
@@ -365,7 +363,7 @@ bash setup_android.sh
 nightmare-loader build-iso --output /sdcard/nightmare-loader-live.iso
 
 # Or invoke the script directly via tsu
-tsu -c 'bash build_iso.sh --output /sdcard/nightmare-loader-live.iso'
+tsu bash -c 'bash build_iso.sh --output /sdcard/nightmare-loader-live.iso'
 ```
 
 The Termux path uses:

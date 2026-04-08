@@ -34,9 +34,9 @@
 #   WITH ROOT (rooted device + tsu):
 #     - All of the above, plus:
 #     - Partition and format a USB drive:
-#         tsu -c 'nightmare-loader prepare /dev/sda'
+#         tsu bash -c 'nightmare-loader prepare /dev/sda'
 #     - Mount/unmount drives automatically (no --mount-point needed):
-#         tsu -c 'nightmare-loader add /dev/sda my.iso'
+#         tsu bash -c 'nightmare-loader add /dev/sda my.iso'
 #     - Build the bootable live ISO:
 #         nightmare-loader build-iso --output /sdcard/nightmare-loader-live.iso
 #
@@ -129,12 +129,12 @@ echo "   nightmare-loader remove /dev/sda my.iso --mount-point /storage/XXXX-XXX
 echo "   nightmare-loader update /dev/sda --mount-point /storage/XXXX-XXXX"
 echo
 echo " Root-only operations (requires rooted device + tsu):"
-echo "   tsu -c 'nightmare-loader prepare /dev/sda'   (partition a USB drive)"
-echo "   tsu -c 'nightmare-loader add /dev/sda my.iso'"
+echo "   tsu bash -c 'nightmare-loader prepare /dev/sda'   (partition a USB drive)"
+echo "   tsu bash -c 'nightmare-loader add /dev/sda my.iso'"
 echo
 echo " Building the bootable live ISO (requires root via tsu):"
 echo "   nightmare-loader build-iso --output /sdcard/nightmare-loader-live.iso"
-echo "   (or: tsu -c 'bash build_iso.sh --output /sdcard/nightmare-loader-live.iso')"
+echo "   (or: tsu bash -c 'bash build_iso.sh --output /sdcard/nightmare-loader-live.iso')"
 echo "   Takes ~10–20 minutes. Uses Alpine Linux x86_64 + QEMU emulation."
 echo "   Once built:"
 echo "     • EtchDroid (no root): copy ISO to phone, plug USB drive via OTG, write."
