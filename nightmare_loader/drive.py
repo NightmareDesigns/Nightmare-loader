@@ -68,34 +68,123 @@ def list_removable_drives() -> list[dict]:
 
 
 def _list_removable_drives_linux() -> list[dict]:
-    """Linux implementation – uses ``lsblk``."""
+    """
+    Linux implementation – uses ``lsblk``.
+
+    A device qualifies as "removable" when:
+      • its ``TRAN`` field is ``usb``  (most reliable signal), or
+      • its ``HOTPLUG`` attribute is ``1`` (catches some card readers / hubs).
+
+    Vendor and serial number are included when lsblk exposes them so that the
+    UI can distinguish two identical-model drives.
+    """
     result = subprocess.run(
         [
             "lsblk",
             "--json",
             "--output",
-            "NAME,SIZE,MODEL,TRAN,TYPE,HOTPLUG",
+            "NAME,SIZE,MODEL,TRAN,TYPE,HOTPLUG,VENDOR,SERIAL",
             "--bytes",
         ],
         capture_output=True,
         text=True,
+        timeout=10,
     )
     if result.returncode != 0:
-        raise DriveError(f"lsblk failed: {result.stderr.strip()}")
+        # lsblk not available or failed – try the sysfs fallback
+        try:
+            return _list_removable_drives_sysfs()
+        except Exception:
+            raise DriveError(f"lsblk failed: {result.stderr.strip()}")
 
-    data = json.loads(result.stdout)
+    try:
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        # Old lsblk version that doesn't support JSON – use sysfs fallback
+        try:
+            return _list_removable_drives_sysfs()
+        except Exception:
+            raise DriveError("lsblk output could not be parsed and sysfs fallback failed.")
+
     drives = []
     for dev in data.get("blockdevices", []):
         if dev.get("type") != "disk":
             continue
-        if not dev.get("hotplug"):
+        tran     = (dev.get("tran") or "").lower()
+        hotplug  = dev.get("hotplug") or False
+        # Accept USB transport explicitly, or any hotplug-flagged disk
+        if tran != "usb" and not hotplug:
             continue
         drives.append(
             {
-                "device": f"/dev/{dev['name']}",
-                "size": dev.get("size", "?"),
-                "model": (dev.get("model") or "").strip(),
-                "transport": dev.get("tran", ""),
+                "device":    f"/dev/{dev['name']}",
+                "size":      dev.get("size", "?"),
+                "model":     (dev.get("model") or "").strip(),
+                "transport": tran or "usb",
+                "vendor":    (dev.get("vendor") or "").strip(),
+                "serial":    (dev.get("serial") or "").strip(),
+            }
+        )
+    return drives
+
+
+def _list_removable_drives_sysfs() -> list[dict]:
+    """
+    Pure-sysfs fallback for Linux when ``lsblk`` is unavailable or fails.
+
+    Walks ``/sys/block`` and treats any disk-type block device with
+    ``removable == 1`` as a candidate.
+    """
+    sys_block = Path("/sys/block")
+    if not sys_block.exists():
+        return []
+
+    drives: list[dict] = []
+    for dev_dir in sorted(sys_block.iterdir()):
+        name = dev_dir.name
+        if not (name.startswith("sd") or name.startswith("mmcblk")
+                or name.startswith("vd") or name.startswith("ub")):
+            continue
+
+        try:
+            removable = (dev_dir / "removable").read_text().strip()
+        except OSError:
+            continue
+        if removable != "1":
+            continue
+
+        size_bytes = "?"
+        try:
+            sectors    = int((dev_dir / "size").read_text().strip())
+            size_bytes = str(sectors * 512)
+        except (OSError, ValueError):
+            pass
+
+        model  = ""
+        vendor = ""
+        for attr, paths in (
+            ("model",  [dev_dir / "device" / "model",  dev_dir / "device" / "name"]),
+            ("vendor", [dev_dir / "device" / "vendor", dev_dir / "device" / "manufacturer"]),
+        ):
+            for p in paths:
+                try:
+                    value = p.read_text().strip()
+                    if attr == "model":
+                        model  = value
+                    else:
+                        vendor = value
+                    break
+                except OSError:
+                    continue
+
+        drives.append(
+            {
+                "device":    f"/dev/{name}",
+                "size":      size_bytes,
+                "model":     model,
+                "transport": "usb",
+                "vendor":    vendor,
+                "serial":    "",
             }
         )
     return drives
@@ -156,6 +245,8 @@ def _list_removable_drives_windows() -> list[dict]:
                 "size":      str(item.get("Size") or "?"),
                 "model":     (item.get("Model") or "").strip(),
                 "transport": "usb",
+                "vendor":    "",
+                "serial":    "",
             }
         )
     return drives
@@ -181,7 +272,7 @@ def _list_removable_drives_android() -> list[dict]:
     drives: list[dict] = []
     for dev_dir in sorted(sys_block.iterdir()):
         name = dev_dir.name
-        # Only consider sd* and mmcblk* type devices; skip loop, ram, zram, …
+        # Only consider sd*, mmcblk* type devices; skip loop, ram, zram, …
         if not (name.startswith("sd") or name.startswith("mmcblk")):
             continue
 
@@ -217,6 +308,8 @@ def _list_removable_drives_android() -> list[dict]:
                 "size":      size_bytes,
                 "model":     model,
                 "transport": "usb",
+                "vendor":    "",
+                "serial":    "",
             }
         )
     return drives

@@ -94,16 +94,116 @@ class TestListRemovableDrives:
         assert drives[0]["model"] == "SanDisk Ultra"
         assert drives[0]["transport"] == "usb"
 
-    def test_raises_on_lsblk_failure(self):
+    def test_raises_on_lsblk_failure_with_no_sysfs(self):
+        """DriveError is raised only when lsblk fails AND the sysfs fallback also fails."""
         from nightmare_loader.drive import list_removable_drives
 
         mock_result = MagicMock()
         mock_result.returncode = 1
         mock_result.stderr = "lsblk: error"
 
-        with patch("subprocess.run", return_value=mock_result):
+        with patch("subprocess.run", return_value=mock_result), \
+             patch("nightmare_loader.drive._list_removable_drives_sysfs",
+                   side_effect=Exception("sysfs also broken")):
             with pytest.raises(DriveError):
                 list_removable_drives()
+
+    def test_lsblk_failure_falls_back_to_sysfs_silently(self):
+        """When lsblk fails but sysfs works, no exception is raised."""
+        from nightmare_loader.drive import list_removable_drives
+
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+        mock_result.stderr = "lsblk: error"
+
+        with patch("subprocess.run", return_value=mock_result), \
+             patch("nightmare_loader.drive._list_removable_drives_sysfs",
+                   return_value=[]):
+            drives = list_removable_drives()
+
+        assert isinstance(drives, list)
+
+    def test_includes_vendor_and_serial(self):
+        from nightmare_loader.drive import list_removable_drives
+
+        lsblk_output = {
+            "blockdevices": [
+                {
+                    "name": "sdb",
+                    "size": "16013852672",
+                    "model": "SanDisk Ultra",
+                    "tran": "usb",
+                    "type": "disk",
+                    "hotplug": True,
+                    "vendor": "SanDisk ",
+                    "serial": "ABCD1234",
+                },
+            ]
+        }
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = json.dumps(lsblk_output)
+
+        with patch("subprocess.run", return_value=mock_result):
+            drives = list_removable_drives()
+
+        assert drives[0]["vendor"] == "SanDisk"
+        assert drives[0]["serial"] == "ABCD1234"
+
+    def test_accepts_usb_transport_even_when_hotplug_false(self):
+        """Drives with tran=usb but hotplug=False must still be returned."""
+        from nightmare_loader.drive import list_removable_drives
+
+        lsblk_output = {
+            "blockdevices": [
+                {
+                    "name": "sdb",
+                    "size": "32000000000",
+                    "model": "Corsair Flash",
+                    "tran": "usb",
+                    "type": "disk",
+                    "hotplug": False,    # <-- incorrectly reported by some controllers
+                    "vendor": "",
+                    "serial": "",
+                },
+            ]
+        }
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = json.dumps(lsblk_output)
+
+        with patch("subprocess.run", return_value=mock_result):
+            drives = list_removable_drives()
+
+        assert len(drives) == 1
+        assert drives[0]["device"] == "/dev/sdb"
+
+    def test_falls_back_to_sysfs_when_lsblk_fails(self, tmp_path):
+        """When lsblk returns non-zero, sysfs fallback is used."""
+        from nightmare_loader.drive import list_removable_drives, _list_removable_drives_sysfs
+
+        bad = MagicMock(returncode=1, stderr="lsblk: error")
+
+        sys_block = tmp_path / "sys" / "block" / "sdb"
+        sys_block.mkdir(parents=True)
+        (sys_block / "removable").write_text("1")
+        (sys_block / "size").write_text("31457280")
+        dev_dir = sys_block / "device"
+        dev_dir.mkdir()
+        (dev_dir / "model").write_text("TestDrive")
+
+        def fake_sysfs():
+            return [{"device": "/dev/sdb", "size": str(31457280 * 512),
+                     "model": "TestDrive", "transport": "usb",
+                     "vendor": "", "serial": ""}]
+
+        with patch("subprocess.run", return_value=bad), \
+             patch("nightmare_loader.drive._list_removable_drives_sysfs",
+                   side_effect=fake_sysfs):
+            drives = list_removable_drives()
+
+        assert len(drives) == 1
+        assert drives[0]["device"] == "/dev/sdb"
 
     def test_empty_when_no_removable_devices(self):
         from nightmare_loader.drive import list_removable_drives
@@ -117,6 +217,8 @@ class TestListRemovableDrives:
                     "tran": "sata",
                     "type": "disk",
                     "hotplug": False,
+                    "vendor": "",
+                    "serial": "",
                 }
             ]
         }
@@ -126,6 +228,65 @@ class TestListRemovableDrives:
 
         with patch("subprocess.run", return_value=mock_result):
             drives = list_removable_drives()
+
+        assert drives == []
+
+
+class TestListRemovableDrivesSysfs:
+    """Tests for the sysfs fallback (_list_removable_drives_sysfs)."""
+
+    def _make_sysfs(self, tmp_path, devices: list[dict]) -> Path:
+        sys_block = tmp_path / "sys" / "block"
+        for d in devices:
+            name = d["name"]
+            dev_dir = sys_block / name
+            dev_dir.mkdir(parents=True, exist_ok=True)
+            (dev_dir / "removable").write_text(d.get("removable", "0"))
+            if "size" in d:
+                (dev_dir / "size").write_text(str(d["size"]))
+            if "model" in d:
+                model_dir = dev_dir / "device"
+                model_dir.mkdir(parents=True, exist_ok=True)
+                (model_dir / "model").write_text(d["model"])
+        return sys_block
+
+    def test_returns_removable_sdb(self, tmp_path):
+        from nightmare_loader.drive import _list_removable_drives_sysfs
+
+        self._make_sysfs(tmp_path, [
+            {"name": "sda", "removable": "0"},
+            {"name": "sdb", "removable": "1", "size": 31457280, "model": "Stick"},
+        ])
+        with patch("nightmare_loader.drive.Path",
+                   side_effect=lambda p: tmp_path / str(p).lstrip("/")):
+            drives = _list_removable_drives_sysfs()
+
+        assert len(drives) == 1
+        assert drives[0]["device"] == "/dev/sdb"
+        assert "vendor" in drives[0]
+        assert "serial" in drives[0]
+
+    def test_skips_non_sd_devices(self, tmp_path):
+        from nightmare_loader.drive import _list_removable_drives_sysfs
+
+        self._make_sysfs(tmp_path, [
+            {"name": "loop0", "removable": "1"},
+            {"name": "sdc",   "removable": "1", "size": 65536},
+        ])
+        with patch("nightmare_loader.drive.Path",
+                   side_effect=lambda p: tmp_path / str(p).lstrip("/")):
+            drives = _list_removable_drives_sysfs()
+
+        names = [d["device"] for d in drives]
+        assert "/dev/sdc" in names
+        assert not any("loop" in n for n in names)
+
+    def test_empty_when_sys_block_absent(self, tmp_path):
+        from nightmare_loader.drive import _list_removable_drives_sysfs
+
+        with patch("nightmare_loader.drive.Path",
+                   side_effect=lambda p: tmp_path / str(p).lstrip("/")):
+            drives = _list_removable_drives_sysfs()
 
         assert drives == []
 
@@ -296,6 +457,8 @@ class TestListRemovableDrivesAndroid:
         assert drives[0]["transport"] == "usb"
         assert drives[0]["size"] == str(31457280 * 512)
         assert drives[0]["model"] == "SanDisk Ultra"
+        assert "vendor" in drives[0]
+        assert "serial" in drives[0]
 
     def test_skips_non_sd_devices(self, tmp_path):
         from nightmare_loader.drive import _list_removable_drives_android

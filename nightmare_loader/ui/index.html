@@ -2179,6 +2179,8 @@ function selectDrive(drive, el) {
   meta.innerHTML = `
     <tr><td>Device</td><td>${drive.device}</td></tr>
     <tr><td>Model</td><td>${drive.model || '—'}</td></tr>
+    ${drive.vendor ? `<tr><td>Vendor</td><td>${drive.vendor}</td></tr>` : ''}
+    ${drive.serial ? `<tr><td>Serial</td><td>${drive.serial}</td></tr>` : ''}
     <tr><td>Size</td><td>${sizeGiB} GiB</td></tr>
     <tr><td>Interface</td><td>${drive.transport || '—'}</td></tr>`;
 
