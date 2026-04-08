@@ -336,3 +336,121 @@ class TestApiPlatformAndroid:
         with patch.object(drv, "_is_termux", return_value=True):
             # Directly verify the helper returns True when mocked
             assert drv._is_termux() is True
+
+
+# ---------------------------------------------------------------------------
+# Windows-specific API behaviour (mocked sys.platform = "win32")
+# ---------------------------------------------------------------------------
+
+class TestWindowsPrepareBlocked:
+    def test_prepare_returns_500_with_helpful_message_on_windows(self, live_server):
+        """On Windows, /api/prepare must return 500 with a clear error, not WinError 2."""
+        import sys as _sys
+        from urllib.error import HTTPError
+
+        with patch.object(_sys, "platform", "win32"):
+            try:
+                _post(live_server + "/api/prepare",
+                      {"device": "I:\\", "layout": "hybrid"})
+            except HTTPError as e:
+                assert e.code == 500
+                body = json.loads(e.read())
+                assert body.get("ok") is False
+                assert "Windows" in body.get("error", "") or "Linux" in body.get("error", "")
+
+
+class TestWindowsAddIso:
+    def test_add_iso_uses_device_path_directly_on_windows(self, live_server, tmp_path):
+        """On Windows, /api/add must write directly to the device path, no mount."""
+        import sys as _sys
+        import nightmare_loader.iso as iso_mod
+
+        # Simulate a prepared Windows USB drive (tmp_path acts as the drive root)
+        from nightmare_loader.grub import STATE_FILE, ISO_DIR, GRUB_CFG
+        state_file = tmp_path / STATE_FILE
+        state_file.write_text(json.dumps({"entries": [], "label": "NIGHTMARE"}))
+        (tmp_path / ISO_DIR).mkdir(parents=True, exist_ok=True)
+        (tmp_path / "boot" / "grub").mkdir(parents=True, exist_ok=True)
+
+        fake_iso_path = tmp_path / "test.iso"
+        fake_iso_path.write_bytes(b"\x00" * 2048)
+
+        fake_meta = {
+            "path": str(fake_iso_path), "filename": "test.iso", "label": "TEST",
+            "size_bytes": 2048, "distro": "ubuntu", "distro_label": "Ubuntu",
+            "kernel": "/casper/vmlinuz", "initrd": "/casper/initrd",
+            "cmdline": "quiet splash",
+        }
+
+        with patch.object(_sys, "platform", "win32"), \
+             patch.object(iso_mod, "get_iso_metadata", return_value=fake_meta):
+            status, body = _post(live_server + "/api/add", {
+                "device":   str(tmp_path),
+                "iso_path": str(fake_iso_path),
+                "copy":     False,
+            })
+
+        assert status == 200
+        assert body.get("ok") is True
+        # State file should have the entry registered
+        import json as _json
+        saved = _json.loads((tmp_path / STATE_FILE).read_text())
+        assert any(e["filename"] == "test.iso" for e in saved["entries"])
+
+
+class TestWindowsRemoveIso:
+    def test_remove_iso_uses_device_path_directly_on_windows(self, live_server, tmp_path):
+        """On Windows, /api/remove must operate directly on the device path, no mount."""
+        import sys as _sys
+        from nightmare_loader.grub import STATE_FILE, ISO_DIR, GRUB_CFG
+
+        # Set up a drive with one registered ISO entry
+        (tmp_path / ISO_DIR).mkdir(parents=True, exist_ok=True)
+        (tmp_path / "boot" / "grub").mkdir(parents=True, exist_ok=True)
+        fake_iso = tmp_path / ISO_DIR / "old.iso"
+        fake_iso.write_bytes(b"\x00" * 512)
+        state = {
+            "entries": [{"filename": "old.iso", "isofile": "/isos/old.iso",
+                         "label": "Old ISO", "distro": "generic",
+                         "distro_label": "Generic", "kernel": None,
+                         "initrd": None, "cmdline": None}],
+            "label": "NIGHTMARE",
+        }
+        (tmp_path / STATE_FILE).write_text(json.dumps(state))
+
+        with patch.object(_sys, "platform", "win32"):
+            status, body = _post(live_server + "/api/remove", {
+                "device":   str(tmp_path),
+                "iso_name": "old.iso",
+            })
+
+        assert status == 200
+        assert body.get("ok") is True
+        import json as _json
+        saved = _json.loads((tmp_path / STATE_FILE).read_text())
+        assert all(e["filename"] != "old.iso" for e in saved["entries"])
+
+
+class TestWindowsListIsos:
+    def test_isos_uses_device_path_directly_on_windows(self, live_server, tmp_path):
+        """On Windows, /api/isos/<device> reads state from the device path directly."""
+        import sys as _sys
+        from urllib.parse import quote
+        from nightmare_loader.grub import STATE_FILE
+
+        state = {
+            "entries": [{"filename": "win.iso", "isofile": "/isos/win.iso",
+                         "label": "WinPE", "distro": "windows",
+                         "distro_label": "Windows", "kernel": None,
+                         "initrd": None, "cmdline": None}],
+            "label": "NIGHTMARE",
+        }
+        (tmp_path / STATE_FILE).write_text(json.dumps(state))
+
+        encoded_device = quote(str(tmp_path), safe="")
+        with patch.object(_sys, "platform", "win32"):
+            status, body = _get(live_server + f"/api/isos/{encoded_device}")
+
+        assert status == 200
+        assert len(body.get("entries", [])) == 1
+        assert body["entries"][0]["filename"] == "win.iso"
