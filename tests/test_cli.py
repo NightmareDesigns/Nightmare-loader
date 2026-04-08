@@ -253,3 +253,97 @@ class TestUpdateWithMountPoint:
             )
         assert result.exit_code == 0, result.output
         assert "Updated" in result.output
+
+
+# ---------------------------------------------------------------------------
+# build-iso command
+# ---------------------------------------------------------------------------
+
+class TestBuildIsoCommand:
+    """Tests for the `build-iso` CLI command."""
+
+    def test_build_iso_is_registered(self):
+        """build-iso must appear in --help output."""
+        runner = CliRunner()
+        result = runner.invoke(cli, ["--help"])
+        assert result.exit_code == 0
+        assert "build-iso" in result.output
+
+    def test_build_iso_missing_script_shows_error(self, tmp_path):
+        """When build_iso.sh cannot be located, exit 1 with a helpful error message."""
+        runner = CliRunner(mix_stderr=False)
+        with patch.object(__import__("pathlib").Path, "is_file", return_value=False), \
+             patch("os.geteuid", return_value=0):
+            result = runner.invoke(cli, ["build-iso"])
+        assert result.exit_code == 1
+        combined = result.output + (result.stderr or "")
+        assert "build_iso.sh" in combined
+
+    def test_build_iso_not_supported_on_windows(self, tmp_path):
+        """build-iso should print a Windows-specific error and exit 1."""
+        script = tmp_path / "build_iso.sh"
+        script.write_text("#!/usr/bin/env bash\n")
+        script.chmod(0o755)
+
+        runner = CliRunner(mix_stderr=False)
+        with patch("sys.platform", "win32"), \
+             patch("os.geteuid", return_value=0), \
+             patch.object(__import__("pathlib").Path, "is_file", return_value=True), \
+             patch.object(__import__("pathlib").Path, "resolve", return_value=script):
+            result = runner.invoke(cli, ["build-iso"])
+        assert result.exit_code == 1
+        combined = result.output + (result.stderr or "")
+        assert "Windows" in combined
+
+    def test_build_iso_termux_non_root_uses_tsu_bash(self, tmp_path):
+        """On Termux without root, tsu bash -c must be used (not tsu -c)."""
+        script = tmp_path / "build_iso.sh"
+        script.write_text("#!/usr/bin/env bash\n")
+        script.chmod(0o755)
+
+        captured_cmd: list = []
+
+        def fake_call(cmd, *args, **kwargs):
+            captured_cmd.extend(cmd)
+            return 0
+
+        runner = CliRunner()
+        with patch("os.geteuid", return_value=1000), \
+             patch("nightmare_loader.cli._is_termux", return_value=True), \
+             patch("shutil.which", return_value="/usr/bin/tsu"), \
+             patch("subprocess.call", side_effect=fake_call), \
+             patch("nightmare_loader.cli.Path.__truediv__", return_value=script), \
+             patch.object(__import__("pathlib").Path, "is_file", return_value=True):
+            runner.invoke(cli, ["build-iso"])
+
+        # Must use ["tsu", "bash", "-c", ...] – NOT ["tsu", "-c", ...]
+        if captured_cmd:
+            assert captured_cmd[:3] == ["tsu", "bash", "-c"], (
+                f"Expected ['tsu', 'bash', '-c', ...] but got {captured_cmd[:3]}"
+            )
+
+    def test_build_iso_linux_non_root_uses_sudo(self, tmp_path):
+        """On Linux without root (non-Termux), sudo must be prepended."""
+        script = tmp_path / "build_iso.sh"
+        script.write_text("#!/usr/bin/env bash\n")
+        script.chmod(0o755)
+
+        captured_cmd: list = []
+
+        def fake_call(cmd, *args, **kwargs):
+            captured_cmd.extend(cmd)
+            return 0
+
+        runner = CliRunner()
+        with patch("os.geteuid", return_value=1000), \
+             patch("nightmare_loader.cli._is_termux", return_value=False), \
+             patch("shutil.which", return_value="/usr/bin/sudo"), \
+             patch("subprocess.call", side_effect=fake_call), \
+             patch("nightmare_loader.cli.Path.__truediv__", return_value=script), \
+             patch.object(__import__("pathlib").Path, "is_file", return_value=True):
+            runner.invoke(cli, ["build-iso"])
+
+        if captured_cmd:
+            assert captured_cmd[0] == "sudo", (
+                f"Expected 'sudo' as first element but got {captured_cmd[0]}"
+            )
