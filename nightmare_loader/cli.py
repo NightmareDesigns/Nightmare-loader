@@ -479,10 +479,13 @@ def list_drives() -> None:
 
     click.echo("Removable drives:")
     for d in drives:
-        size_gb = int(d["size"]) / 1_073_741_824 if str(d["size"]).isdigit() else "?"
+        if str(d["size"]).isdigit():
+            size_str = f"{int(d['size']) / 1_073_741_824:.1f} GB"
+        else:
+            size_str = "? GB"
         model = d["model"] or "unknown"
         transport = d["transport"] or "?"
-        click.echo(f"  {d['device']}  {model}  ({size_gb:.1f} GB, {transport})")
+        click.echo(f"  {d['device']}  {model}  ({size_str}, {transport})")
 
 
 # ---------------------------------------------------------------------------

@@ -347,3 +347,44 @@ class TestBuildIsoCommand:
             assert captured_cmd[0] == "sudo", (
                 f"Expected 'sudo' as first element but got {captured_cmd[0]}"
             )
+
+
+# ---------------------------------------------------------------------------
+# drives command – output formatting
+# ---------------------------------------------------------------------------
+
+class TestDrivesCommand:
+    """Tests for the `drives` CLI command output formatting."""
+
+    def test_drives_with_known_size(self):
+        """drives should format size as X.X GB when size is known."""
+        fake_drives = [
+            {"device": "/dev/sda", "size": "16000000000", "model": "SanDisk", "transport": "usb"},
+        ]
+        runner = CliRunner()
+        with patch("nightmare_loader.cli.list_removable_drives", return_value=fake_drives):
+            result = runner.invoke(cli, ["drives"])
+        assert result.exit_code == 0
+        assert "/dev/sda" in result.output
+        assert "GB" in result.output
+        assert "SanDisk" in result.output
+
+    def test_drives_with_unknown_size_formats_correctly(self):
+        """drives must render '? GB' and exit 0 when size cannot be determined."""
+        fake_drives = [
+            {"device": "/dev/sda", "size": "?", "model": "Unknown Drive", "transport": "usb"},
+        ]
+        runner = CliRunner()
+        with patch("nightmare_loader.cli.list_removable_drives", return_value=fake_drives):
+            result = runner.invoke(cli, ["drives"])
+        assert result.exit_code == 0, f"drives crashed: {result.output}\n{result.exception}"
+        assert "/dev/sda" in result.output
+        assert "? GB" in result.output
+
+    def test_drives_empty_prints_message(self):
+        """drives should print a friendly message when no drives are found."""
+        runner = CliRunner()
+        with patch("nightmare_loader.cli.list_removable_drives", return_value=[]):
+            result = runner.invoke(cli, ["drives"])
+        assert result.exit_code == 0
+        assert "No removable drives found" in result.output
