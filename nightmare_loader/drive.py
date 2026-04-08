@@ -192,33 +192,74 @@ def _list_removable_drives_sysfs() -> list[dict]:
 
 def _list_removable_drives_windows() -> list[dict]:
     """
-    Windows implementation – queries removable drives via PowerShell/WMI.
+    Windows implementation – queries removable drives via PowerShell.
 
-    Returns drives with ``device`` set to the drive letter (e.g. ``D:\\``).
-    Disk partitioning operations (prepare/add/remove) are not supported on
-    Windows; the list lets the web UI inspect ISOs on an already-prepared USB.
+    Two strategies are tried in order:
+
+    1. **Storage module** (``Get-Disk`` / ``Get-Partition`` / ``Get-Volume`` –
+       Windows 8 / Server 2012 and later).  ``BusType -eq 'USB'`` is the most
+       reliable signal for USB flash drives on modern Windows.
+
+    2. **WMI + GetRelated fallback** (works on all Windows versions).  Uses
+       the WMI ``GetRelated()`` method to traverse Disk → Partition →
+       LogicalDisk, which avoids the backslash-escaping pitfalls of the
+       ``ASSOCIATORS OF`` WQL syntax.  Matches on ``InterfaceType -eq 'USB'``,
+       ``PNPDeviceID -like 'USBSTOR*'``, or ``MediaType -like '*Removable*'``.
+
+    Returns drives with ``device`` set to the drive-letter root
+    (e.g. ``I:\\``).
     """
+    # Two-stage PowerShell script.
+    # Stage 1 – Storage module (Win 8+ / Server 2012+)
+    # Stage 2 – WMI GetRelated fallback (all Windows versions)
     ps_script = (
-        "Get-WmiObject Win32_DiskDrive "
-        "| Where-Object { $_.MediaType -like '*Removable*' -or $_.InterfaceType -eq 'USB' } "
-        "| ForEach-Object { "
-        "    $d = $_; "
-        "    $letters = @(Get-WmiObject -Query "
-        "        \"ASSOCIATORS OF {Win32_DiskDrive.DeviceID='$(($d.DeviceID -replace '\\\\','\\\\\\\\'))'} "
-        "        WHERE AssocClass=Win32_DiskDriveToDiskPartition\" "
-        "        | ForEach-Object { (Get-WmiObject -Query "
-        "            \"ASSOCIATORS OF {Win32_DiskPartition.DeviceID='$($_.DeviceID)'} "
-        "            WHERE AssocClass=Win32_LogicalDiskToPartition\").DeviceID }); "
-        "    [PSCustomObject]@{ Device=$d.DeviceID; Letters=($letters -join ','); "
-        "        Model=$d.Model; Size=$d.Size } "
-        "} | ConvertTo-Json -Compress"
+        "$r = $null; "
+        "try { "
+        "  $r = @(Get-Disk -ErrorAction Stop "
+        "          | Where-Object { $_.BusType -eq 'USB' } "
+        "          | ForEach-Object { "
+        "              $n = $_.Number; "
+        "              $lts = @(Get-Partition -DiskNumber $n -EA SilentlyContinue "
+        "                        | Get-Volume -EA SilentlyContinue "
+        "                        | Where-Object { $_.DriveLetter } "
+        "                        | ForEach-Object { \"$($_.DriveLetter):\" }); "
+        "              [PSCustomObject]@{ "
+        "                Device  = \"PHYSICALDRIVE$n\"; "
+        "                Letters = ($lts -join ','); "
+        "                Model   = $_.FriendlyName; "
+        "                Size    = $_.Size "
+        "              } "
+        "          }) "
+        "} catch {} "
+        "if (-not $r -or $r.Count -eq 0) { "
+        "  $r = @(Get-WmiObject Win32_DiskDrive "
+        "          | Where-Object { "
+        "              $_.InterfaceType -eq 'USB' -or "
+        "              $_.PNPDeviceID   -like 'USBSTOR*' -or "
+        "              $_.MediaType     -like '*Removable*' "
+        "          } "
+        "          | ForEach-Object { "
+        "              $lts = @($_.GetRelated('Win32_DiskPartition') "
+        "                        | ForEach-Object { "
+        "                            $_.GetRelated('Win32_LogicalDisk').DeviceID "
+        "                          } "
+        "                        | Where-Object { $_ }); "
+        "              [PSCustomObject]@{ "
+        "                Device  = $_.DeviceID; "
+        "                Letters = ($lts -join ','); "
+        "                Model   = $_.Model; "
+        "                Size    = $_.Size "
+        "              } "
+        "          }) "
+        "} "
+        "$r | ConvertTo-Json -Compress"
     )
     try:
         result = subprocess.run(
             ["powershell", "-NoProfile", "-Command", ps_script],
             capture_output=True,
             text=True,
-            timeout=15,
+            timeout=20,
         )
     except FileNotFoundError:
         raise DriveError("PowerShell not found. Cannot enumerate drives on this system.")
@@ -226,19 +267,25 @@ def _list_removable_drives_windows() -> list[dict]:
         raise DriveError("Drive enumeration timed out.")
 
     stdout = result.stdout.strip()
-    if not stdout:
+    if not stdout or stdout == "[]":
         return []
 
     raw = json.loads(stdout)
-    # PowerShell returns a single object (not a list) when there is only one drive
+    # PowerShell returns a plain dict (not a list) when there is only one drive
     if isinstance(raw, dict):
         raw = [raw]
 
     drives = []
     for item in raw:
         letters = item.get("Letters", "")
-        # Use the first drive letter as the device path; fall back to DeviceID
-        device = (letters.split(",")[0].strip() + "\\") if letters else item.get("Device", "?")
+        # Normalise to a proper Windows drive-letter root (e.g. "E:\").
+        # PowerShell may return bare letters ("E"), letters with colon ("E:"),
+        # or comma-separated pairs ("E:,F:").  Extract the first usable letter.
+        raw_letter = letters.split(",")[0].strip() if letters else ""
+        if raw_letter and raw_letter[0].isalpha():
+            device = raw_letter[0].upper() + ":\\"
+        else:
+            device = item.get("Device", "?")
         drives.append(
             {
                 "device":    device,

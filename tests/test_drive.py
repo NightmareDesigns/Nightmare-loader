@@ -294,7 +294,8 @@ class TestListRemovableDrivesSysfs:
 class TestListRemovableDrivesWindows:
     """Tests for the Windows drive listing path (_list_removable_drives_windows)."""
 
-    def test_returns_drives_from_powershell(self):
+    def test_returns_drives_from_powershell_bare_letter(self):
+        """Letters returned as bare letter (e.g. "E") should produce "E:\\"."""
         from nightmare_loader.drive import _list_removable_drives_windows
 
         ps_output = json.dumps([
@@ -313,10 +314,33 @@ class TestListRemovableDrivesWindows:
             drives = _list_removable_drives_windows()
 
         assert len(drives) == 1
-        assert drives[0]["device"] == "E\\"
+        assert drives[0]["device"] == "E:\\"
         assert drives[0]["model"] == "SanDisk Ultra USB 3.0"
         assert drives[0]["transport"] == "usb"
         assert drives[0]["size"] == "16013852672"
+
+    def test_returns_drives_from_powershell_letter_with_colon(self):
+        """Letters returned as "E:" (Storage module format) should produce "E:\\"."""
+        from nightmare_loader.drive import _list_removable_drives_windows
+
+        ps_output = json.dumps([
+            {
+                "Device": "PHYSICALDRIVE1",
+                "Letters": "I:",
+                "Model": "Kingston DataTraveler",
+                "Size": "32016777216",
+            }
+        ])
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = ps_output
+
+        with patch("subprocess.run", return_value=mock_result):
+            drives = _list_removable_drives_windows()
+
+        assert len(drives) == 1
+        assert drives[0]["device"] == "I:\\"
+        assert drives[0]["model"] == "Kingston DataTraveler"
 
     def test_single_drive_dict_not_list(self):
         """PowerShell returns a plain dict when only one drive is present."""
@@ -324,7 +348,7 @@ class TestListRemovableDrivesWindows:
 
         ps_output = json.dumps({
             "Device": "\\\\.\\PHYSICALDRIVE1",
-            "Letters": "F",
+            "Letters": "F:",
             "Model": "Kingston DT",
             "Size": "8000000000",
         })
@@ -336,7 +360,19 @@ class TestListRemovableDrivesWindows:
             drives = _list_removable_drives_windows()
 
         assert len(drives) == 1
-        assert drives[0]["device"] == "F\\"
+        assert drives[0]["device"] == "F:\\"
+
+    def test_letter_is_uppercased(self):
+        """Drive letter must always be upper-case regardless of PS output case."""
+        from nightmare_loader.drive import _list_removable_drives_windows
+
+        ps_output = json.dumps({"Device": "PHYSICALDRIVE2", "Letters": "i:", "Model": "X", "Size": "0"})
+        mock_result = MagicMock(returncode=0, stdout=ps_output)
+
+        with patch("subprocess.run", return_value=mock_result):
+            drives = _list_removable_drives_windows()
+
+        assert drives[0]["device"] == "I:\\"
 
     def test_empty_on_no_output(self):
         from nightmare_loader.drive import _list_removable_drives_windows
@@ -344,6 +380,17 @@ class TestListRemovableDrivesWindows:
         mock_result = MagicMock()
         mock_result.returncode = 0
         mock_result.stdout = ""
+
+        with patch("subprocess.run", return_value=mock_result):
+            drives = _list_removable_drives_windows()
+
+        assert drives == []
+
+    def test_empty_on_empty_json_array(self):
+        """PowerShell may return '[]' when no drives are found."""
+        from nightmare_loader.drive import _list_removable_drives_windows
+
+        mock_result = MagicMock(returncode=0, stdout="[]")
 
         with patch("subprocess.run", return_value=mock_result):
             drives = _list_removable_drives_windows()
@@ -361,7 +408,7 @@ class TestListRemovableDrivesWindows:
         import subprocess
         from nightmare_loader.drive import _list_removable_drives_windows, DriveError
 
-        with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("powershell", 15)):
+        with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("powershell", 20)):
             with pytest.raises(DriveError, match="timed out"):
                 _list_removable_drives_windows()
 
