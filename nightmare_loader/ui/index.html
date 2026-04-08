@@ -333,6 +333,48 @@
     .badge-ok  { color: #00ff41; }
     .badge-new { color: #ffaa44; }
 
+    /* ── WiFi manager ────────────────────────────────────────────────── */
+    .wifi-net-list {
+      display: flex; flex-direction: column; gap: 3px;
+      max-height: 260px; overflow-y: auto; flex-shrink: 0;
+      scrollbar-width: thin; scrollbar-color: var(--red-dark) transparent;
+    }
+    .wifi-net {
+      display: flex; align-items: center; gap: 8px;
+      padding: 5px 9px; border-radius: 3px; cursor: pointer;
+      font-size: 0.72rem; border: 1px solid transparent;
+      transition: background 0.1s;
+    }
+    .wifi-net:hover    { background: rgba(0,80,20,0.25); border-color: rgba(0,140,30,0.2); }
+    .wifi-net.selected { background: rgba(0,100,25,0.35); border-color: rgba(0,180,40,0.35); }
+    .wifi-net .wn-ssid  { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .wifi-net .wn-sig   { font-size: 0.62rem; color: var(--muted); flex-shrink: 0; }
+    .wifi-net .wn-lock  { font-size: 0.75rem; flex-shrink: 0; }
+    .wifi-net .wn-cur   { font-size: 0.6rem; color: var(--green); flex-shrink: 0; }
+
+    /* ── ISO downloader ───────────────────────────────────────────────── */
+    .dl-list {
+      display: flex; flex-direction: column; gap: 5px;
+      max-height: 200px; overflow-y: auto;
+      scrollbar-width: thin; scrollbar-color: var(--red-dark) transparent;
+    }
+    .dl-item {
+      font-size: 0.7rem; padding: 6px 9px; border-radius: 3px;
+      border: 1px solid rgba(139,0,0,0.3); background: rgba(15,0,0,0.4);
+    }
+    .dl-item .dl-name { color: var(--green); margin-bottom: 4px; }
+    .dl-item .dl-bar-wrap { background: rgba(255,255,255,0.08); border-radius: 2px; height: 5px; overflow: hidden; margin: 3px 0; }
+    .dl-item .dl-bar      { height: 100%; background: var(--green); border-radius: 2px; transition: width 0.3s; }
+    .dl-item .dl-meta     { color: var(--muted); font-size: 0.62rem; display: flex; justify-content: space-between; }
+    .dl-item .dl-err      { color: #ff5555; }
+    .distro-links { display: flex; flex-wrap: wrap; gap: 5px; }
+    .distro-links a {
+      font-size: 0.65rem; color: var(--green); border: 1px solid rgba(0,180,40,0.3);
+      padding: 2px 7px; border-radius: 2px; text-decoration: none;
+      background: rgba(0,40,10,0.35); transition: background 0.1s;
+    }
+    .distro-links a:hover { background: rgba(0,80,20,0.5); }
+
     /* ── Taskbar (bottom) ────────────────────────────────────────────── */
     #taskbar {
       position: fixed;
@@ -901,6 +943,8 @@
   <div class="dock-sep"></div>
   <div class="dock-icon"        id="dock-btn-files"   onclick="toggleWin('win-files')">   <span class="di-g">📁</span><span class="di-l">Files</span></div>
   <div class="dock-icon"        id="dock-btn-update"  onclick="toggleWin('win-update')">  <span class="di-g">🔄</span><span class="di-l">Update</span></div>
+  <div class="dock-icon"        id="dock-btn-wifi"    onclick="toggleWin('win-wifi')">    <span class="di-g">📶</span><span class="di-l">WiFi</span></div>
+  <div class="dock-icon"        id="dock-btn-dl"      onclick="toggleWin('win-dl')">      <span class="di-g">⬇️</span><span class="di-l">Download</span></div>
   <div class="dock-sep"></div>
   <div class="dock-icon"        id="dock-btn-log"     onclick="toggleWin('win-log')">     <span class="di-g">📟</span><span class="di-l">Log</span></div>
 </div>
@@ -1204,7 +1248,92 @@
     </div>
   </div>
 
-  <!-- ┌── FILE MANAGER ────────────────────────────────────────────────┐ -->
+  <!-- ┌── WiFi MANAGER ────────────────────────────────────────────────┐ -->
+  <div class="os-win" id="win-wifi" style="left:64px;top:10px;width:400px;display:none">
+    <div class="win-bar">
+      <span class="win-bar-icon">📶</span>
+      <span class="win-bar-title">WiFi Manager</span>
+      <div class="win-btns">
+        <div class="wbtn wbtn-min"   onclick="minimizeWin('win-wifi')"></div>
+        <div class="wbtn wbtn-close" onclick="closeWin('win-wifi')"></div>
+      </div>
+    </div>
+    <div class="win-body" style="gap:10px">
+      <div class="panel-title">📶 WiFi Manager</div>
+      <!-- Status row -->
+      <div class="upd-row">
+        <span class="upd-key">STATUS</span>
+        <span id="wifi-status-badge" class="upd-val">—</span>
+      </div>
+      <div class="upd-row">
+        <span class="upd-key">CONNECTED TO</span>
+        <span id="wifi-current-ssid" class="upd-val">—</span>
+      </div>
+      <!-- Network list -->
+      <div class="wifi-net-list" id="wifi-net-list">
+        <div class="empty-msg">Click Scan to find networks.</div>
+      </div>
+      <!-- Connect form -->
+      <div class="field" id="wifi-pw-field" style="display:none">
+        <label>Password <small style="color:var(--muted)">(leave blank for open networks)</small></label>
+        <input type="password" id="wifi-password" placeholder="Network password…" />
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-green"  onclick="wifiScan()">📡 Scan</button>
+        <button class="btn btn-green"  id="wifi-connect-btn" onclick="wifiConnect()" style="display:none">⚡ Connect</button>
+        <button class="btn btn-ghost"  onclick="wifiDisconnect()">✕ Disconnect</button>
+        <button class="btn btn-ghost"  onclick="wifiStatus()">⟳ Status</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ┌── ISO DOWNLOADER ──────────────────────────────────────────────┐ -->
+  <div class="os-win" id="win-dl" style="left:480px;top:10px;width:460px;display:none">
+    <div class="win-bar">
+      <span class="win-bar-icon">⬇️</span>
+      <span class="win-bar-title">ISO Downloader</span>
+      <div class="win-btns">
+        <div class="wbtn wbtn-min"   onclick="minimizeWin('win-dl')"></div>
+        <div class="wbtn wbtn-close" onclick="closeWin('win-dl')"></div>
+      </div>
+    </div>
+    <div class="win-body" style="gap:10px">
+      <div class="panel-title">⬇️ Download ISO</div>
+      <div class="field">
+        <label>Direct ISO URL</label>
+        <input type="url" id="dl-url" placeholder="https://example.com/distro.iso" />
+      </div>
+      <div class="field">
+        <label>Save to Directory</label>
+        <input type="text" id="dl-dest" placeholder="~/Downloads" />
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-green" onclick="dlStart()">⬇ Download</button>
+        <button class="btn btn-ghost" onclick="dlRefresh()">⟳ Refresh</button>
+      </div>
+      <hr class="divider" />
+      <div style="font-size:0.67rem;color:var(--muted);margin-bottom:4px;letter-spacing:0.1em">POPULAR DISTROS — OFFICIAL DOWNLOAD PAGES</div>
+      <div class="distro-links">
+        <a href="https://ubuntu.com/download/desktop"       target="_blank">Ubuntu</a>
+        <a href="https://www.debian.org/CD/http-ftp/"       target="_blank">Debian</a>
+        <a href="https://fedoraproject.org/workstation/download" target="_blank">Fedora</a>
+        <a href="https://archlinux.org/download/"           target="_blank">Arch</a>
+        <a href="https://linuxmint.com/download.php"        target="_blank">Mint</a>
+        <a href="https://www.kali.org/get-kali/"            target="_blank">Kali</a>
+        <a href="https://manjaro.org/download/"             target="_blank">Manjaro</a>
+        <a href="https://www.opensuse.org/#Leap"            target="_blank">openSUSE</a>
+        <a href="https://tails.boum.org/install/"           target="_blank">Tails</a>
+        <a href="https://www.hirensbootcd.org/download/"    target="_blank">Hiren's PE</a>
+      </div>
+      <hr class="divider" />
+      <div style="font-size:0.67rem;color:var(--muted);margin-bottom:2px;letter-spacing:0.1em">ACTIVE DOWNLOADS</div>
+      <div class="dl-list" id="dl-list">
+        <div class="empty-msg">No active downloads.</div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /#desktop -->
   <div class="os-win" id="win-files" style="left:64px;top:10px;width:480px;display:none">
     <div class="win-bar">
       <span class="win-bar-icon">📁</span>
@@ -1667,16 +1796,18 @@
   };
 
   const TB_APPS = [
-    { id: 'win-drives',  label: '💀 Drives'  },
-    { id: 'win-forge',   label: '⚙️ Forge'   },
-    { id: 'win-addiso',  label: '📀 ISO'     },
-    { id: 'win-vault',   label: '🗄️ Vault'   },
-    { id: 'win-inspect', label: '🔬 Inspect' },
-    { id: 'win-winpe',   label: '🪟 Win PE'  },
-    { id: 'win-gemini',  label: '🤖 Gemini'  },
-    { id: 'win-files',   label: '📁 Files'   },
-    { id: 'win-update',  label: '🔄 Update'  },
-    { id: 'win-log',     label: '📟 Log'     },
+    { id: 'win-drives',  label: '💀 Drives'   },
+    { id: 'win-forge',   label: '⚙️ Forge'    },
+    { id: 'win-addiso',  label: '📀 ISO'      },
+    { id: 'win-vault',   label: '🗄️ Vault'    },
+    { id: 'win-inspect', label: '🔬 Inspect'  },
+    { id: 'win-winpe',   label: '🪟 Win PE'   },
+    { id: 'win-gemini',  label: '🤖 Gemini'   },
+    { id: 'win-files',   label: '📁 Files'    },
+    { id: 'win-update',  label: '🔄 Update'   },
+    { id: 'win-wifi',    label: '📶 WiFi'     },
+    { id: 'win-dl',      label: '⬇️ Download' },
+    { id: 'win-log',     label: '📟 Log'      },
   ];
 
   function buildTaskbarApps() {
@@ -2321,6 +2452,8 @@ window.addEventListener('load', () => {
   log('Desktop ready. Open any app from the dock or taskbar.', 'ok');
   // Initialise file manager at home dir
   fmLoad('');
+  // Show WiFi connection status in tray
+  wifiStatus();
 });
 
 
@@ -2445,7 +2578,222 @@ window.addEventListener('load', () => {
 
 
 /* ═══════════════════════════════════════════════════════════════════
-   UPDATE SYSTEM
+   WiFi MANAGER
+═══════════════════════════════════════════════════════════════════ */
+(function () {
+  let selectedSSID = null;
+  let selectedSecurity = '';
+
+  window.wifiStatus = async function () {
+    try {
+      const data = await apiGet('/api/wifi/status');
+      const badge = document.getElementById('wifi-status-badge');
+      const ssidEl = document.getElementById('wifi-current-ssid');
+      if (data.error) {
+        badge.innerHTML = `<span style="color:#ff5555">⚠ ${data.error}</span>`;
+        ssidEl.textContent = '—';
+        return;
+      }
+      if (data.connected) {
+        badge.innerHTML = '<span class="badge-ok">● Connected</span>';
+        ssidEl.textContent = data.ssid || '(unknown)';
+      } else {
+        badge.innerHTML = '<span style="color:#ffaa44">○ Disconnected</span>';
+        ssidEl.textContent = '—';
+      }
+    } catch (e) {
+      log('WiFi status error: ' + e.message, 'err');
+    }
+  };
+
+  window.wifiScan = async function () {
+    const list = document.getElementById('wifi-net-list');
+    list.innerHTML = '<div class="empty-msg"><span class="spin"></span> Scanning…</div>';
+    selectedSSID = null;
+    document.getElementById('wifi-connect-btn').style.display = 'none';
+    document.getElementById('wifi-pw-field').style.display    = 'none';
+    log('Scanning for WiFi networks…', 'dim');
+    try {
+      const data = await apiGet('/api/wifi/networks');
+      if (data.error) {
+        list.innerHTML = `<div class="empty-msg" style="color:#ff5555">⚠ ${data.error}</div>`;
+        log('WiFi scan failed: ' + data.error, 'err');
+        return;
+      }
+      const nets = data.networks || [];
+      if (nets.length === 0) {
+        list.innerHTML = '<div class="empty-msg">No networks found.</div>';
+        return;
+      }
+      list.innerHTML = '';
+      nets.forEach(n => {
+        const bars = n.signal >= 75 ? '▂▄▆█' : n.signal >= 50 ? '▂▄▆·' : n.signal >= 25 ? '▂▄··' : '▂···';
+        const lock = (n.security && n.security !== 'open') ? '🔒' : '🔓';
+        const cur  = n.in_use ? '<span class="wn-cur">✔</span>' : '';
+        const row  = document.createElement('div');
+        row.className = 'wifi-net' + (n.in_use ? ' selected' : '');
+        row.innerHTML =
+          `${cur}<span class="wn-lock">${lock}</span>` +
+          `<span class="wn-ssid">${_wifiEsc(n.ssid)}</span>` +
+          `<span class="wn-sig">${bars} ${n.signal}%</span>`;
+        row.addEventListener('click', () => {
+          document.querySelectorAll('.wifi-net').forEach(r => r.classList.remove('selected'));
+          row.classList.add('selected');
+          selectedSSID = n.ssid;
+          selectedSecurity = n.security || '';
+          document.getElementById('wifi-connect-btn').style.display = '';
+          const needPw = selectedSecurity && selectedSecurity !== 'open';
+          document.getElementById('wifi-pw-field').style.display = needPw ? '' : 'none';
+        });
+        list.appendChild(row);
+      });
+      log(`Found ${nets.length} network(s).`, 'ok');
+      wifiStatus();
+    } catch (e) {
+      list.innerHTML = `<div class="empty-msg" style="color:#ff5555">Error: ${e.message}</div>`;
+      log('WiFi scan error: ' + e.message, 'err');
+    }
+  };
+
+  window.wifiConnect = async function () {
+    if (!selectedSSID) return;
+    const pw = document.getElementById('wifi-password').value;
+    setStatus('Connecting to WiFi…', true);
+    log(`Connecting to "${selectedSSID}"…`, 'dim');
+    try {
+      const res = await apiPost('/api/wifi/connect', { ssid: selectedSSID, password: pw });
+      if (res.ok) {
+        log(res.message || `Connected to ${selectedSSID}.`, 'ok');
+        wifiStatus();
+      } else {
+        log('WiFi connect failed: ' + (res.error || 'unknown'), 'err');
+      }
+    } catch (e) {
+      log('WiFi connect error: ' + e.message, 'err');
+    }
+    setStatus('READY');
+  };
+
+  window.wifiDisconnect = async function () {
+    setStatus('Disconnecting WiFi…', true);
+    try {
+      const res = await apiPost('/api/wifi/disconnect', {});
+      log(res.message || 'Disconnected.', res.ok ? 'ok' : 'err');
+      wifiStatus();
+    } catch (e) {
+      log('WiFi disconnect error: ' + e.message, 'err');
+    }
+    setStatus('READY');
+  };
+
+  function _wifiEsc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   ISO DOWNLOADER
+═══════════════════════════════════════════════════════════════════ */
+(function () {
+  let _dlPollTimer = null;
+
+  window.dlStart = async function () {
+    const url     = document.getElementById('dl-url').value.trim();
+    const destDir = document.getElementById('dl-dest').value.trim();
+    if (!url) { log('Downloader: no URL provided.', 'err'); return; }
+
+    log(`━━ DOWNLOAD ${url.split('/').pop()} ━━`, 'head');
+    try {
+      const res = await apiPost('/api/download/start', { url, dest_dir: destDir || undefined });
+      if (res.ok) {
+        log(`Download started: ${res.filename} → ${res.dest}`, 'ok');
+        document.getElementById('dl-url').value = '';
+        dlRefresh();
+        _startPoll();
+      } else {
+        log('Download error: ' + (res.error || 'unknown'), 'err');
+      }
+    } catch (e) {
+      log('Download error: ' + e.message, 'err');
+    }
+  };
+
+  window.dlRefresh = async function () {
+    try {
+      const data = await apiGet('/api/download/status');
+      renderDownloads(data.downloads || []);
+    } catch (e) {
+      log('Download list error: ' + e.message, 'err');
+    }
+  };
+
+  function renderDownloads(downloads) {
+    const list = document.getElementById('dl-list');
+    if (downloads.length === 0) {
+      list.innerHTML = '<div class="empty-msg">No active downloads.</div>';
+      return;
+    }
+    list.innerHTML = '';
+    downloads.forEach(d => {
+      const pct  = d.total > 0 ? Math.round(d.downloaded / d.total * 100) : 0;
+      const dlMB = (d.downloaded / 1048576).toFixed(1);
+      const totMB = d.total > 0 ? (d.total / 1048576).toFixed(1) + ' MB' : '? MB';
+      const item = document.createElement('div');
+      item.className = 'dl-item';
+      const isRunning = d.status === 'running';
+      const barColor = d.status === 'error' ? '#cc0000' : d.status === 'done' ? '#00ff41' : 'var(--green)';
+      const statusLabel = d.status === 'done' ? '✔ Done'
+                        : d.status === 'error' ? `⚠ ${d.error}`
+                        : d.status === 'cancelled' ? '✕ Cancelled'
+                        : `${pct}%`;
+      item.innerHTML =
+        `<div class="dl-name">${_dlEsc(d.filename)}</div>` +
+        `<div class="dl-bar-wrap"><div class="dl-bar" style="width:${pct}%;background:${barColor}"></div></div>` +
+        `<div class="dl-meta">` +
+        `<span>${_dlEsc(statusLabel)}</span>` +
+        `<span>${dlMB} / ${totMB}</span>` +
+        `</div>` +
+        (isRunning
+          ? `<div style="margin-top:4px"><button class="btn btn-ghost" style="padding:2px 8px;font-size:0.6rem" onclick="dlCancel('${d.id}')">✕ Cancel</button></div>`
+          : (d.status === 'done'
+              ? `<div style="margin-top:4px;font-size:0.62rem;color:var(--muted)">Saved to: ${_dlEsc(d.dest)}</div>`
+              : ''));
+      list.appendChild(item);
+    });
+  }
+
+  window.dlCancel = async function (id) {
+    try {
+      await apiPost('/api/download/cancel', { id });
+      dlRefresh();
+    } catch (e) {
+      log('Cancel error: ' + e.message, 'err');
+    }
+  };
+
+  function _startPoll() {
+    if (_dlPollTimer) return;
+    _dlPollTimer = setInterval(async () => {
+      try {
+        const data = await apiGet('/api/download/status');
+        const all  = data.downloads || [];
+        renderDownloads(all);
+        if (all.every(d => d.status !== 'running')) {
+          clearInterval(_dlPollTimer);
+          _dlPollTimer = null;
+        }
+      } catch {
+        clearInterval(_dlPollTimer);
+        _dlPollTimer = null;
+      }
+    }, 1500);
+  }
+
+  function _dlEsc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+})();
 ═══════════════════════════════════════════════════════════════════ */
 async function checkUpdate() {
   document.getElementById('upd-latest').textContent = '…';
