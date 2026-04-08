@@ -10,9 +10,12 @@ API surface
 GET  /api/drives
 GET  /api/isos/<device>          device = URL-encoded, e.g. %2Fdev%2Fsdb
 GET  /api/info?path=<iso_path>
+GET  /api/browse?path=<dir>      list files/dirs (file manager)
+GET  /api/update/check           check GitHub for latest release
 POST /api/prepare                body: {device, label, layout}
 POST /api/add                    body: {device, iso_path, label?, copy?}
 POST /api/remove                 body: {device, iso_name}
+POST /api/update/install         install latest release from GitHub
 """
 
 from __future__ import annotations
@@ -20,8 +23,11 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import subprocess
+import sys
 import tempfile
 import threading
+import urllib.request
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -80,6 +86,12 @@ class _Handler(BaseHTTPRequestHandler):
             params = parse_qs(parsed.query)
             iso_path = unquote(params.get("path", [""])[0])
             self._api_info(iso_path)
+        elif path == "/api/browse":
+            params = parse_qs(parsed.query)
+            browse_path = unquote(params.get("path", [""])[0])
+            self._api_browse(browse_path)
+        elif path == "/api/update/check":
+            self._api_update_check()
         else:
             self._json({"error": "Not found"}, 404)
 
@@ -99,6 +111,8 @@ class _Handler(BaseHTTPRequestHandler):
             self._api_add(body)
         elif path == "/api/remove":
             self._api_remove(body)
+        elif path == "/api/update/install":
+            self._api_update_install()
         else:
             self._json({"error": "Not found"}, 404)
 
@@ -342,6 +356,95 @@ class _Handler(BaseHTTPRequestHandler):
                         pass
 
             self._json({"ok": True, "message": f"Removed '{iso_name}' from {device}."})
+        except Exception as exc:
+            self._json({"ok": False, "error": str(exc)}, 500)
+
+    # ── API: GET /api/browse?path=… ───────────────────────────────────
+    def _api_browse(self, browse_path: str) -> None:
+        try:
+            # Default to the user's home directory when no path is given
+            if not browse_path:
+                browse_path = str(Path.home())
+
+            target = Path(browse_path).resolve()
+
+            if not target.exists() or not target.is_dir():
+                self._json({"error": f"Not a directory: {browse_path}"}, 400)
+                return
+
+            entries = []
+            try:
+                items = sorted(target.iterdir(), key=lambda p: (p.is_file(), p.name.lower()))
+            except PermissionError:
+                self._json({"error": f"Permission denied: {browse_path}"}, 403)
+                return
+
+            for item in items:
+                try:
+                    stat = item.stat()
+                    entries.append({
+                        "name":  item.name,
+                        "path":  str(item),
+                        "type":  "file" if item.is_file() else "dir",
+                        "size":  stat.st_size if item.is_file() else None,
+                    })
+                except OSError:
+                    pass  # skip entries we cannot stat
+
+            parent = str(target.parent) if target != target.parent else None
+            self._json({
+                "path":    str(target),
+                "parent":  parent,
+                "entries": entries,
+            })
+        except Exception as exc:
+            self._json({"error": str(exc)}, 500)
+
+    # ── API: GET /api/update/check ────────────────────────────────────
+    _GITHUB_API = "https://api.github.com/repos/NightmareDesigns/Nightmare-loader/releases/latest"
+
+    def _api_update_check(self) -> None:
+        from . import __version__
+        try:
+            req = urllib.request.Request(
+                self._GITHUB_API,
+                headers={"Accept": "application/vnd.github+json",
+                         "User-Agent": f"nightmare-loader/{__version__}"},
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read().decode())
+            latest_tag = data.get("tag_name", "").lstrip("v")
+            html_url   = data.get("html_url", "")
+            self._json({
+                "current": __version__,
+                "latest":  latest_tag,
+                "url":     html_url,
+                "up_to_date": latest_tag == __version__,
+            })
+        except Exception as exc:
+            from . import __version__
+            self._json({"current": __version__, "error": str(exc)}, 200)
+
+    # ── API: POST /api/update/install ─────────────────────────────────
+    _GITHUB_INSTALL_URL = (
+        "git+https://github.com/NightmareDesigns/Nightmare-loader.git"
+    )
+
+    def _api_update_install(self) -> None:
+        try:
+            result = subprocess.run(
+                [sys.executable, "-m", "pip", "install", "--upgrade",
+                 self._GITHUB_INSTALL_URL],
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
+            if result.returncode == 0:
+                self._json({"ok": True, "message": "Update installed. Restart nightmare-loader to apply."})
+            else:
+                self._json({"ok": False, "error": result.stderr.strip() or result.stdout.strip()}, 500)
+        except subprocess.TimeoutExpired:
+            self._json({"ok": False, "error": "Update timed out after 5 minutes."}, 500)
         except Exception as exc:
             self._json({"ok": False, "error": str(exc)}, 500)
 

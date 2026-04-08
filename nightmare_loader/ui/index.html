@@ -296,6 +296,43 @@
     .gmsg-system { background: rgba(15,15,15,0.45); border: 1px solid #222; color: var(--muted); font-size: 0.65rem; align-self: center; text-align: center; }
     .gmsg-ai.err { color: #ff5555; }
 
+    /* ── File Manager ────────────────────────────────────────────────── */
+    .fm-addr {
+      display: flex; gap: 6px; align-items: center; flex-shrink: 0;
+    }
+    .fm-addr input {
+      flex: 1; font-size: 0.72rem;
+    }
+    .fm-list {
+      flex: 1; overflow-y: auto; display: flex; flex-direction: column;
+      gap: 2px; min-height: 200px; max-height: 360px;
+      scrollbar-width: thin; scrollbar-color: var(--red-dark) transparent;
+    }
+    .fm-entry {
+      display: flex; align-items: center; gap: 8px;
+      padding: 5px 8px; border-radius: 3px; cursor: pointer;
+      font-size: 0.72rem; border: 1px solid transparent;
+      transition: background 0.1s;
+    }
+    .fm-entry:hover { background: rgba(0,80,20,0.25); border-color: rgba(0,140,30,0.2); }
+    .fm-entry.selected { background: rgba(0,100,25,0.35); border-color: rgba(0,180,40,0.35); }
+    .fm-entry .fe-icon { font-size: 1rem; flex-shrink: 0; }
+    .fm-entry .fe-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .fm-entry .fe-size { font-size: 0.62rem; color: var(--muted); flex-shrink: 0; }
+    .fm-actions { display: flex; gap: 6px; flex-wrap: wrap; flex-shrink: 0; }
+
+    /* ── Update system ───────────────────────────────────────────────── */
+    .upd-row {
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 0.74rem; padding: 5px 0;
+      border-bottom: 1px solid rgba(139,0,0,0.18);
+    }
+    .upd-row:last-child { border-bottom: none; }
+    .upd-key { color: var(--muted); font-size: 0.67rem; letter-spacing: 0.08em; }
+    .upd-val { color: var(--green); font-weight: bold; }
+    .badge-ok  { color: #00ff41; }
+    .badge-new { color: #ffaa44; }
+
     /* ── Taskbar (bottom) ────────────────────────────────────────────── */
     #taskbar {
       position: fixed;
@@ -862,6 +899,9 @@
   <div class="dock-icon"        id="dock-btn-winpe"   onclick="toggleWin('win-winpe')">   <span class="di-g">🪟</span><span class="di-l">Win PE</span></div>
   <div class="dock-icon"        id="dock-btn-gemini"  onclick="toggleWin('win-gemini')">  <span class="di-g">🤖</span><span class="di-l">Gemini</span></div>
   <div class="dock-sep"></div>
+  <div class="dock-icon"        id="dock-btn-files"   onclick="toggleWin('win-files')">   <span class="di-g">📁</span><span class="di-l">Files</span></div>
+  <div class="dock-icon"        id="dock-btn-update"  onclick="toggleWin('win-update')">  <span class="di-g">🔄</span><span class="di-l">Update</span></div>
+  <div class="dock-sep"></div>
   <div class="dock-icon"        id="dock-btn-log"     onclick="toggleWin('win-log')">     <span class="di-g">📟</span><span class="di-l">Log</span></div>
 </div>
 
@@ -1161,6 +1201,67 @@
         <button class="btn btn-ghost" style="padding:2px 10px;font-size:0.65rem" onclick="clearLog()">Clear</button>
       </div>
       <div id="log-output"></div>
+    </div>
+  </div>
+
+  <!-- ┌── FILE MANAGER ────────────────────────────────────────────────┐ -->
+  <div class="os-win" id="win-files" style="left:64px;top:10px;width:480px;display:none">
+    <div class="win-bar">
+      <span class="win-bar-icon">📁</span>
+      <span class="win-bar-title">File Manager — Browse &amp; Select</span>
+      <div class="win-btns">
+        <div class="wbtn wbtn-min"   onclick="minimizeWin('win-files')"></div>
+        <div class="wbtn wbtn-close" onclick="closeWin('win-files')"></div>
+      </div>
+    </div>
+    <div class="win-body" style="gap:8px">
+      <div class="fm-addr">
+        <button class="btn btn-ghost" onclick="fmUp()" style="padding:4px 10px;font-size:0.75rem">⬆ Up</button>
+        <input type="text" id="fm-path" placeholder="Path…" onkeydown="if(event.key==='Enter')fmNavigate(this.value)" />
+        <button class="btn btn-green" onclick="fmNavigate(document.getElementById('fm-path').value)" style="padding:4px 10px">Go</button>
+      </div>
+      <div class="fm-list" id="fm-list">
+        <div class="empty-msg"><span class="spin"></span> Loading…</div>
+      </div>
+      <div class="fm-actions">
+        <button class="btn btn-green"  id="fm-use-add"     onclick="fmUseInAddISO()"     style="display:none">📀 Use in ISO Loader</button>
+        <button class="btn btn-ghost"  id="fm-use-inspect" onclick="fmUseInInspect()"    style="display:none">🔬 Use in Inspector</button>
+        <button class="btn btn-ghost"  id="fm-use-winpe"   onclick="fmUseInWinPE()"      style="display:none">🪟 Use in Win PE</button>
+        <button class="btn btn-ghost"  onclick="fmRefresh()" style="padding:4px 10px;font-size:0.7rem">⟳ Refresh</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ┌── UPDATE SYSTEM ───────────────────────────────────────────────┐ -->
+  <div class="os-win" id="win-update" style="left:560px;top:10px;width:360px;display:none">
+    <div class="win-bar">
+      <span class="win-bar-icon">🔄</span>
+      <span class="win-bar-title">Nightmare Loader — Update</span>
+      <div class="win-btns">
+        <div class="wbtn wbtn-min"   onclick="minimizeWin('win-update')"></div>
+        <div class="wbtn wbtn-close" onclick="closeWin('win-update')"></div>
+      </div>
+    </div>
+    <div class="win-body" style="gap:12px">
+      <div class="panel-title">🔄 Software Update</div>
+      <div id="upd-info">
+        <div class="upd-row"><span class="upd-key">INSTALLED VERSION</span><span class="upd-val" id="upd-current">…</span></div>
+        <div class="upd-row"><span class="upd-key">LATEST ON GITHUB</span><span class="upd-val" id="upd-latest">—</span></div>
+        <div class="upd-row"><span class="upd-key">STATUS</span><span id="upd-status-badge">—</span></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-green" onclick="checkUpdate()">🔍 Check for Updates</button>
+        <button class="btn btn-ghost" id="upd-install-btn" onclick="installUpdate()" style="display:none">⬆ Install Update</button>
+      </div>
+      <div class="progress-wrap" id="upd-progress-wrap" style="display:none">
+        <div class="progress-bar" id="upd-progress"></div>
+      </div>
+      <p style="font-size:0.67rem;color:var(--muted);line-height:1.55">
+        Updates are fetched from
+        <a href="https://github.com/NightmareDesigns/Nightmare-loader" target="_blank"
+           style="color:var(--green)">github.com/NightmareDesigns/Nightmare-loader</a>.<br>
+        After installing, restart the server for changes to take effect.
+      </p>
     </div>
   </div>
 
@@ -1573,6 +1674,8 @@
     { id: 'win-inspect', label: '🔬 Inspect' },
     { id: 'win-winpe',   label: '🪟 Win PE'  },
     { id: 'win-gemini',  label: '🤖 Gemini'  },
+    { id: 'win-files',   label: '📁 Files'   },
+    { id: 'win-update',  label: '🔄 Update'  },
     { id: 'win-log',     label: '📟 Log'     },
   ];
 
@@ -2216,7 +2319,201 @@ window.addEventListener('load', () => {
   openWin('win-log');
   log('\u2620  NIGHTMARE OS — ALL SYSTEMS ARMED', 'head');
   log('Desktop ready. Open any app from the dock or taskbar.', 'ok');
+  // Initialise file manager at home dir
+  fmLoad('');
 });
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   FILE MANAGER
+═══════════════════════════════════════════════════════════════════ */
+(function () {
+  let fmCurrentPath = '';
+  let fmSelected    = null;
+
+  async function fmLoad(path) {
+    const list   = document.getElementById('fm-list');
+    const addr   = document.getElementById('fm-path');
+    fmSelected   = null;
+    fmHideActions();
+
+    list.innerHTML = '<div class="empty-msg"><span class="spin"></span> Loading…</div>';
+
+    try {
+      const data = await apiGet('/api/browse?path=' + encodeURIComponent(path || ''));
+      fmCurrentPath = data.path;
+      addr.value    = fmCurrentPath;
+
+      list.innerHTML = '';
+
+      // Parent directory shortcut
+      if (data.parent) {
+        const up = _fmMakeEntry('⬆', '.. (parent directory)', '', 'dir');
+        up.addEventListener('click', () => fmLoad(data.parent));
+        list.appendChild(up);
+      }
+
+      if (data.entries.length === 0) {
+        list.innerHTML = '<div class="empty-msg">(empty directory)</div>';
+        return;
+      }
+
+      data.entries.forEach(e => {
+        const icon = e.type === 'dir' ? '📁' : (e.name.toLowerCase().endsWith('.iso') ? '💿' : '📄');
+        const size = e.size != null ? _fmFmtSize(e.size) : '';
+        const row  = _fmMakeEntry(icon, e.name, size, e.type);
+        row.addEventListener('click', () => {
+          if (e.type === 'dir') {
+            fmLoad(e.path);
+          } else {
+            document.querySelectorAll('#fm-list .fm-entry').forEach(r => r.classList.remove('selected'));
+            row.classList.add('selected');
+            fmSelected = e;
+            const isIso = e.name.toLowerCase().endsWith('.iso');
+            document.getElementById('fm-use-add').style.display     = isIso ? '' : 'none';
+            document.getElementById('fm-use-inspect').style.display = isIso ? '' : 'none';
+            document.getElementById('fm-use-winpe').style.display   = isIso ? '' : 'none';
+          }
+        });
+        list.appendChild(row);
+      });
+
+      log('File manager: ' + fmCurrentPath, 'dim');
+    } catch (e) {
+      list.innerHTML = `<div class="empty-msg" style="color:#ff5555">Error: ${e.message}</div>`;
+      log('File manager error: ' + e.message, 'err');
+    }
+  }
+
+  function _fmMakeEntry(icon, name, size, type) {
+    const row = document.createElement('div');
+    row.className = 'fm-entry';
+    row.innerHTML =
+      `<span class="fe-icon">${icon}</span>` +
+      `<span class="fe-name">${_esc(name)}</span>` +
+      (size ? `<span class="fe-size">${_esc(size)}</span>` : '');
+    return row;
+  }
+
+  function _fmFmtSize(bytes) {
+    if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(1) + ' GB';
+    if (bytes >= 1048576)    return (bytes / 1048576).toFixed(0)    + ' MB';
+    if (bytes >= 1024)       return (bytes / 1024).toFixed(0)       + ' KB';
+    return bytes + ' B';
+  }
+
+  function _esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function fmHideActions() {
+    ['fm-use-add','fm-use-inspect','fm-use-winpe'].forEach(id => {
+      document.getElementById(id).style.display = 'none';
+    });
+  }
+
+  window.fmLoad      = fmLoad;
+  window.fmNavigate  = (p) => fmLoad(p);
+  window.fmRefresh   = () => fmLoad(fmCurrentPath);
+  window.fmUp        = () => {
+    const addr = document.getElementById('fm-path').value.trim();
+    const cur  = addr || fmCurrentPath;
+    // Go to parent by stripping last path segment
+    const parent = cur.replace(/[\\/][^\\/]+[\\/]?$/, '') || '/';
+    fmLoad(parent);
+  };
+
+  window.fmUseInAddISO = () => {
+    if (!fmSelected) return;
+    document.getElementById('add-iso-path').value = fmSelected.path;
+    openWin('win-addiso');
+    log('File Manager → ISO Loader: ' + fmSelected.name, 'ok');
+  };
+  window.fmUseInInspect = () => {
+    if (!fmSelected) return;
+    document.getElementById('inspect-path').value = fmSelected.path;
+    openWin('win-inspect');
+    inspectISO();
+  };
+  window.fmUseInWinPE = () => {
+    if (!fmSelected) return;
+    document.getElementById('winpe-iso-path').value = fmSelected.path;
+    openWin('win-winpe');
+    log('File Manager → Win PE: ' + fmSelected.name, 'ok');
+  };
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   UPDATE SYSTEM
+═══════════════════════════════════════════════════════════════════ */
+async function checkUpdate() {
+  document.getElementById('upd-latest').textContent = '…';
+  document.getElementById('upd-status-badge').textContent = '…';
+  document.getElementById('upd-install-btn').style.display = 'none';
+  log('Checking for updates…', 'dim');
+
+  try {
+    const data = await apiGet('/api/update/check');
+    document.getElementById('upd-current').textContent = data.current || '?';
+    if (data.error) {
+      document.getElementById('upd-latest').textContent = 'Error';
+      document.getElementById('upd-status-badge').innerHTML =
+        `<span class="badge-new">⚠ ${data.error}</span>`;
+      log('Update check failed: ' + data.error, 'err');
+      return;
+    }
+    document.getElementById('upd-latest').textContent = data.latest || '?';
+    if (data.up_to_date) {
+      document.getElementById('upd-status-badge').innerHTML = '<span class="badge-ok">✔ Up to date</span>';
+      log('Nightmare Loader is up to date (' + data.current + ').', 'ok');
+    } else {
+      document.getElementById('upd-status-badge').innerHTML =
+        `<span class="badge-new">⬆ Update available: ${data.latest}</span>`;
+      document.getElementById('upd-install-btn').style.display = '';
+      log(`Update available: ${data.current} → ${data.latest}`, 'warn');
+    }
+  } catch (e) {
+    document.getElementById('upd-status-badge').innerHTML = `<span class="badge-new">⚠ ${e.message}</span>`;
+    log('Update check error: ' + e.message, 'err');
+  }
+}
+
+async function installUpdate() {
+  const wrap = document.getElementById('upd-progress-wrap');
+  const bar  = document.getElementById('upd-progress');
+  document.getElementById('upd-install-btn').style.display = 'none';
+  wrap.style.display = '';
+  bar.style.width    = '10%';
+  setStatus('Installing update…', true);
+  log('━━ INSTALLING UPDATE ━━', 'head');
+  log('Downloading from GitHub… (this may take a minute)', 'dim');
+
+  try {
+    bar.style.width = '40%';
+    const res = await apiPost('/api/update/install', {});
+    bar.style.width = '100%';
+    if (res.ok) {
+      log(res.message || 'Update installed successfully.', 'ok');
+      log('Restart nightmare-loader to apply the update.', 'warn');
+      setStatus('UPDATE INSTALLED — RESTART REQUIRED');
+    } else {
+      bar.style.background = '#cc0000';
+      log('Update failed: ' + (res.error || 'unknown error'), 'err');
+      setStatus('UPDATE FAILED');
+    }
+  } catch (e) {
+    bar.style.background = '#cc0000';
+    log('Update error: ' + e.message, 'err');
+    setStatus('UPDATE FAILED');
+  }
+
+  setTimeout(() => {
+    wrap.style.display   = 'none';
+    bar.style.width      = '0%';
+    bar.style.background = '';
+  }, 3000);
+}
 </script>
 </body>
 </html>
