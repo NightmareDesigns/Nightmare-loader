@@ -399,22 +399,23 @@ class _Handler(BaseHTTPRequestHandler):
             if not browse_path:
                 browse_path = str(Path.home())
 
-            # Reject null bytes (path injection guard)
-            if "\x00" in browse_path:
+            # Reject null bytes and other control characters (path injection guard)
+            if any(c < " " for c in browse_path):
                 self._json({"error": "Invalid path"}, 400)
                 return
 
+            # Canonicalise to an absolute path; this eliminates ".." traversal
             target = Path(browse_path).resolve()
 
-            if not target.exists() or not target.is_dir():
-                self._json({"error": f"Not a directory: {browse_path}"}, 400)
+            if not target.is_dir():
+                self._json({"error": f"Not a directory: {target}"}, 400)
                 return
 
             entries = []
             try:
                 items = sorted(target.iterdir(), key=lambda p: (p.is_file(), p.name.lower()))
             except PermissionError:
-                self._json({"error": f"Permission denied: {browse_path}"}, 403)
+                self._json({"error": f"Permission denied: {target}"}, 403)
                 return
 
             for item in items:
@@ -538,6 +539,10 @@ class _Handler(BaseHTTPRequestHandler):
         password = body.get("password", "").strip()
         if not ssid:
             self._json({"error": "ssid is required"}, 400)
+            return
+        # Validate SSID: 1-32 printable characters, no control characters
+        if len(ssid) > 32 or any(ord(c) < 0x20 for c in ssid):
+            self._json({"error": "Invalid SSID"}, 400)
             return
         backend = self._wifi_backend()
         try:
