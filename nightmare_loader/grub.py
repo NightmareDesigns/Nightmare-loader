@@ -14,6 +14,8 @@ import os
 import shutil
 import subprocess
 import textwrap
+import urllib.request
+import warnings
 from pathlib import Path
 from typing import Optional
 
@@ -29,6 +31,16 @@ STATE_FILE = ".nightmare-loader.json"
 
 # Source path of the bundled GRUB theme (inside this package)
 _THEME_SRC = Path(__file__).parent / "theme" / "theme.txt"
+
+# wimboot release to download when preparing a drive for Windows PE booting.
+# https://github.com/ipxe/wimboot/releases
+_WIMBOOT_VERSION = "v2.7.4"
+_WIMBOOT_URL_BIOS = (
+    f"https://github.com/ipxe/wimboot/releases/download/{_WIMBOOT_VERSION}/wimboot"
+)
+_WIMBOOT_URL_EFI = (
+    f"https://github.com/ipxe/wimboot/releases/download/{_WIMBOOT_VERSION}/wimboot.efi"
+)
 
 # GRUB modules needed for both legacy and EFI targets
 GRUB_MODULES = [
@@ -136,6 +148,54 @@ def install_grub_theme(mount_point: str | Path) -> Path:
     return dest
 
 
+def install_wimboot(mount_point: str | Path) -> bool:
+    """
+    Download and install wimboot binaries to the USB drive.
+
+    Fetches the pre-built wimboot binaries from the project's GitHub releases
+    and writes them to the GRUB directory on the drive:
+
+    * ``boot/grub/wimboot``      – BIOS binary, loaded via ``linux16``
+    * ``boot/grub/wimboot.efi``  – UEFI binary, loaded via ``linuxefi``
+
+    Both files are required so that Windows PE ISOs boot correctly on either
+    firmware type.
+
+    Parameters
+    ----------
+    mount_point:
+        Root of the mounted USB partition.
+
+    Returns
+    -------
+    bool
+        ``True`` if both binaries were written successfully, ``False`` if the
+        download failed (e.g. no internet connection).  A ``False`` return
+        means Windows PE entries will not boot until wimboot is installed
+        manually.
+    """
+    grub_dir = Path(mount_point) / GRUB_DIR
+    grub_dir.mkdir(parents=True, exist_ok=True)
+
+    success = True
+    for url, filename in (
+        (_WIMBOOT_URL_BIOS, "wimboot"),
+        (_WIMBOOT_URL_EFI, "wimboot.efi"),
+    ):
+        dest = grub_dir / filename
+        try:
+            urllib.request.urlretrieve(url, str(dest))
+        except Exception as exc:
+            warnings.warn(
+                f"Failed to download wimboot ({filename}) from {url}: {exc}. "
+                "Windows PE ISOs will not boot until wimboot is installed manually.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            success = False
+    return success
+
+
 def _linux_entry(label: str, isofile: str, kernel: str, initrd: str, cmdline: str) -> str:
     """Generate a single GRUB menuentry that loopback-mounts an ISO."""
     # isofile should be the path as seen by GRUB, e.g. /isos/ubuntu.iso
@@ -152,24 +212,36 @@ def _linux_entry(label: str, isofile: str, kernel: str, initrd: str, cmdline: st
 
 def _windows_entry(label: str, isofile: str) -> str:
     """
-    Generate a GRUB menuentry for a Windows ISO.
+    Generate a GRUB menuentry for a Windows PE ISO.
 
-    Uses the ``ntldr`` / ``chainloader`` approach: we chain into the Windows
-    boot manager after mapping the ISO as a virtual disk via the ``img_mount``
-    command.  This requires the ``wimboot`` kernel to be installed alongside
-    GRUB (copy wimboot to /boot/grub/wimboot on the USB stick).
+    Uses wimboot to load the WIM-based Windows PE environment.  A platform
+    check selects the correct GRUB commands:
+
+    * **UEFI**  – ``linuxefi`` / ``initrdefi`` (GRUB EFI commands)
+    * **BIOS**  – ``linux16`` / ``initrd16``   (GRUB legacy commands)
+
+    wimboot must be present on the USB drive at ``/boot/grub/wimboot``
+    (BIOS) and ``/boot/grub/wimboot.efi`` (EFI).  The ``prepare`` command
+    downloads both automatically.
     """
+    newc_args = (
+        "newc:bootmgr:(loop)/bootmgr"
+        " newc:bcd:(loop)/Boot/BCD"
+        " newc:boot.sdi:(loop)/Boot/boot.sdi"
+        " newc:boot.wim:(loop)/sources/boot.wim"
+    )
     return textwrap.dedent(f"""\
-        menuentry "{label} (Windows – requires wimboot)" {{
+        menuentry "{label} (Windows PE)" {{
             set isofile="{isofile}"
             loopback loop "$isofile"
-            # Load wimboot to handle WIM-based Windows setup
-            linux16 /boot/grub/wimboot
-            initrd16 \
-                newc:bootmgr:(loop)/bootmgr \
-                newc:bcd:(loop)/Boot/BCD \
-                newc:boot.sdi:(loop)/Boot/boot.sdi \
-                newc:boot.wim:(loop)/sources/boot.wim
+            if [ "${{grub_platform}}" = "efi" ]; then
+                linuxefi ($root)/boot/grub/wimboot.efi
+                initrdefi {newc_args}
+            else
+                insmod linux16
+                linux16 ($root)/boot/grub/wimboot
+                initrd16 {newc_args}
+            fi
         }}
         """)
 

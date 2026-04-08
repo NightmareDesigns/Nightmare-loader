@@ -52,6 +52,7 @@ from .grub import (
     install_grub_bios,
     install_grub_efi,
     install_grub_theme,
+    install_wimboot,
     load_state,
     save_state,
     write_grub_cfg,
@@ -259,6 +260,15 @@ def prepare(device: str, layout: str, label: str, yes: bool) -> None:
             install_grub_efi(mp, removable=True)
             # Install the Nightmare Loader themed pre-loader
             install_grub_theme(mp)
+            # Download wimboot for Windows PE boot support (BIOS + UEFI)
+            click.echo("Downloading wimboot for Windows PE support…")
+            if not install_wimboot(mp):
+                click.echo(
+                    "  Warning: wimboot download failed (no internet?). "
+                    "Windows PE ISOs will not boot until wimboot is installed manually.\n"
+                    "  Place wimboot at boot/grub/wimboot (BIOS) and "
+                    "boot/grub/wimboot.efi (UEFI) on the drive."
+                )
             # Write initial (empty) grub.cfg – pass label so the search
             # command in the header matches the FAT volume label.
             write_grub_cfg(mp, [], label=label)
@@ -283,6 +293,15 @@ def prepare(device: str, layout: str, label: str, yes: bool) -> None:
                         pass
             # Install the Nightmare Loader themed pre-loader
             install_grub_theme(mp)
+            # Download wimboot for Windows PE boot support (BIOS + UEFI)
+            click.echo("Downloading wimboot for Windows PE support…")
+            if not install_wimboot(mp):
+                click.echo(
+                    "  Warning: wimboot download failed (no internet?). "
+                    "Windows PE ISOs will not boot until wimboot is installed manually.\n"
+                    "  Place wimboot at boot/grub/wimboot (BIOS) and "
+                    "boot/grub/wimboot.efi (UEFI) on the drive."
+                )
             write_grub_cfg(mp, [], label=label)
             save_state(mp, {"entries": [], "label": label})
 

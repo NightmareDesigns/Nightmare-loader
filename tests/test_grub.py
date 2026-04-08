@@ -6,16 +6,19 @@ import json
 import os
 import tempfile
 from pathlib import Path
+from unittest.mock import patch, MagicMock
 
 import pytest
 
 from nightmare_loader.grub import (
     GRUB_CFG,
+    GRUB_DIR,
     GRUB_THEME_DIR,
     ISO_DIR,
     STATE_FILE,
     generate_grub_cfg,
     install_grub_theme,
+    install_wimboot,
     load_state,
     save_state,
     write_grub_cfg,
@@ -69,6 +72,36 @@ class TestWindowsEntry:
     def test_wimboot_referenced(self):
         out = _windows_entry("Windows 11", "/isos/win11.iso")
         assert "wimboot" in out
+
+    def test_uefi_uses_linuxefi(self):
+        out = _windows_entry("Windows 11", "/isos/win11.iso")
+        assert "linuxefi" in out
+        assert "initrdefi" in out
+
+    def test_bios_uses_linux16(self):
+        out = _windows_entry("Windows 11", "/isos/win11.iso")
+        assert "linux16" in out
+        assert "initrd16" in out
+
+    def test_platform_check_present(self):
+        out = _windows_entry("Windows 11", "/isos/win11.iso")
+        assert "grub_platform" in out
+        assert '"efi"' in out
+
+    def test_root_prefix_on_wimboot_path(self):
+        out = _windows_entry("Windows 11", "/isos/win11.iso")
+        assert "($root)/boot/grub/wimboot" in out
+
+    def test_newc_entries_present(self):
+        out = _windows_entry("Windows 11", "/isos/win11.iso")
+        assert "newc:bootmgr" in out
+        assert "newc:bcd" in out
+        assert "newc:boot.sdi" in out
+        assert "newc:boot.wim" in out
+
+    def test_isofile_in_loopback(self):
+        out = _windows_entry("Windows 11", "/isos/win11.iso")
+        assert "/isos/win11.iso" in out
 
 
 # ---------------------------------------------------------------------------
@@ -250,3 +283,67 @@ class TestInstallGrubTheme:
     def test_grub_cfg_references_theme(self, tmp_path):
         cfg = generate_grub_cfg([])
         assert "themes/nightmare/theme.txt" in cfg
+
+
+# ---------------------------------------------------------------------------
+# install_wimboot
+# ---------------------------------------------------------------------------
+
+class TestInstallWimboot:
+    def test_creates_wimboot_files_on_success(self, tmp_path):
+        """install_wimboot returns True and writes both binaries when download succeeds."""
+        captured_urls = []
+
+        def fake_urlretrieve(url, dest):
+            captured_urls.append(url)
+            Path(dest).write_bytes(b"fake-wimboot-binary")
+
+        with patch("nightmare_loader.grub.urllib.request.urlretrieve", side_effect=fake_urlretrieve):
+            result = install_wimboot(tmp_path)
+
+        assert result is True
+        assert (tmp_path / GRUB_DIR / "wimboot").exists()
+        assert (tmp_path / GRUB_DIR / "wimboot.efi").exists()
+        # Verify the correct upstream URLs are requested
+        assert any("wimboot" in url and "github.com" in url for url in captured_urls)
+        assert any("wimboot.efi" in url and "github.com" in url for url in captured_urls)
+
+    def test_returns_false_on_download_failure(self, tmp_path):
+        """install_wimboot returns False (and emits a warning) when the network download fails."""
+        with patch(
+            "nightmare_loader.grub.urllib.request.urlretrieve",
+            side_effect=OSError("network unreachable"),
+        ):
+            import warnings as _warnings
+            with _warnings.catch_warnings(record=True) as caught:
+                _warnings.simplefilter("always")
+                result = install_wimboot(tmp_path)
+
+        assert result is False
+        assert any("wimboot" in str(w.message) for w in caught)
+
+    def test_creates_grub_dir_if_missing(self, tmp_path):
+        """install_wimboot creates boot/grub/ if it does not exist."""
+        def fake_urlretrieve(url, dest):
+            Path(dest).write_bytes(b"x")
+
+        with patch("nightmare_loader.grub.urllib.request.urlretrieve", side_effect=fake_urlretrieve):
+            install_wimboot(tmp_path)
+
+        assert (tmp_path / GRUB_DIR).is_dir()
+
+    def test_partial_failure_returns_false(self, tmp_path):
+        """install_wimboot returns False if even one binary fails to download."""
+        call_count = {"n": 0}
+
+        def fake_urlretrieve(url, dest):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                Path(dest).write_bytes(b"bios-wimboot")
+            else:
+                raise OSError("timeout")
+
+        with patch("nightmare_loader.grub.urllib.request.urlretrieve", side_effect=fake_urlretrieve):
+            result = install_wimboot(tmp_path)
+
+        assert result is False
