@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from click.testing import CliRunner
 
-from nightmare_loader.cli import cli, _require_root, _require_root_or_mount_point
+from nightmare_loader.cli import cli, _require_root, _require_root_or_mount_point, _termux_nl_exe, _termux_bash
 
 
 # ---------------------------------------------------------------------------
@@ -296,7 +296,7 @@ class TestBuildIsoCommand:
         assert "Windows" in combined
 
     def test_build_iso_termux_non_root_uses_tsu_bash(self, tmp_path):
-        """On Termux without root, tsu bash -c must be used (not tsu -c)."""
+        """On Termux without root, tsu <bash_exe> -c must be used with full bash path."""
         script = tmp_path / "build_iso.sh"
         script.write_text("#!/usr/bin/env bash\n")
         script.chmod(0o755)
@@ -310,16 +310,22 @@ class TestBuildIsoCommand:
         runner = CliRunner()
         with patch("os.geteuid", return_value=1000), \
              patch("nightmare_loader.cli._is_termux", return_value=True), \
-             patch("shutil.which", return_value="/usr/bin/tsu"), \
+             patch("shutil.which", side_effect=lambda x: f"/usr/bin/{x}"), \
              patch("subprocess.call", side_effect=fake_call), \
              patch("nightmare_loader.cli.Path.__truediv__", return_value=script), \
              patch.object(__import__("pathlib").Path, "is_file", return_value=True):
             runner.invoke(cli, ["build-iso"])
 
-        # Must use ["tsu", "bash", "-c", ...] – NOT ["tsu", "-c", ...]
+        # Must start with ["tsu", <full-path-to-bash>, "-c", ...]
         if captured_cmd:
-            assert captured_cmd[:3] == ["tsu", "bash", "-c"], (
-                f"Expected ['tsu', 'bash', '-c', ...] but got {captured_cmd[:3]}"
+            assert captured_cmd[0] == "tsu", (
+                f"Expected 'tsu' as first element but got {captured_cmd[0]}"
+            )
+            assert captured_cmd[1].endswith("bash"), (
+                f"Expected full path to bash as second element but got {captured_cmd[1]}"
+            )
+            assert captured_cmd[2] == "-c", (
+                f"Expected '-c' as third element but got {captured_cmd[2]}"
             )
 
     def test_build_iso_linux_non_root_uses_sudo(self, tmp_path):
@@ -388,3 +394,66 @@ class TestDrivesCommand:
             result = runner.invoke(cli, ["drives"])
         assert result.exit_code == 0
         assert "No removable drives found" in result.output
+
+
+# ---------------------------------------------------------------------------
+# _termux_nl_exe / _termux_bash helpers
+# ---------------------------------------------------------------------------
+
+class TestTermuxPathHelpers:
+    """_termux_nl_exe and _termux_bash must return absolute paths usable with tsu."""
+
+    def test_termux_nl_exe_returns_argv0_when_absolute(self):
+        """If sys.argv[0] is absolute, it should be returned as-is."""
+        with patch.object(sys, "argv", ["/data/data/com.termux/files/usr/bin/nightmare-loader"]):
+            result = _termux_nl_exe()
+        assert result == "/data/data/com.termux/files/usr/bin/nightmare-loader"
+
+    def test_termux_nl_exe_falls_back_to_which(self):
+        """If sys.argv[0] is not absolute, shutil.which result should be used."""
+        with patch.object(sys, "argv", ["nightmare-loader"]), \
+             patch("shutil.which", return_value="/usr/local/bin/nightmare-loader"):
+            result = _termux_nl_exe()
+        assert result == "/usr/local/bin/nightmare-loader"
+
+    def test_termux_bash_returns_which_result(self):
+        """_termux_bash should return the full path from shutil.which when available."""
+        with patch("shutil.which", return_value="/data/data/com.termux/files/usr/bin/bash"):
+            result = _termux_bash()
+        assert result == "/data/data/com.termux/files/usr/bin/bash"
+
+    def test_termux_bash_fallback_uses_prefix_env(self):
+        """When bash is not on PATH, PREFIX env var should be used for the fallback path."""
+        import os as _os
+        with patch("shutil.which", return_value=None), \
+             patch.dict(_os.environ, {"PREFIX": "/data/data/com.termux/files/usr"}):
+            result = _termux_bash()
+        assert result == "/data/data/com.termux/files/usr/bin/bash"
+
+
+class TestTermuxErrorMessagesUseFullPath:
+    """Error messages shown to the user on Termux must include the absolute exe path."""
+
+    def test_require_root_shows_full_nl_path(self):
+        """_require_root error on Termux should show full path to nightmare-loader."""
+        runner = CliRunner(mix_stderr=False)
+        with patch("os.geteuid", return_value=1000), \
+             patch("nightmare_loader.cli._is_termux", return_value=True), \
+             patch("nightmare_loader.cli._termux_nl_exe",
+                   return_value="/data/data/com.termux/files/usr/bin/nightmare-loader"):
+            result = runner.invoke(cli, ["prepare", "/dev/sda", "--yes"])
+        combined = result.output + (result.stderr or "")
+        assert "/data/data/com.termux/files/usr/bin/nightmare-loader" in combined
+
+    def test_require_root_or_mount_point_shows_full_nl_path(self, capsys):
+        """_require_root_or_mount_point error on Termux should show full path."""
+        with patch("os.geteuid", return_value=1000), \
+             patch("nightmare_loader.cli._is_termux", return_value=True), \
+             patch("nightmare_loader.cli._termux_nl_exe",
+                   return_value="/data/data/com.termux/files/usr/bin/nightmare-loader"):
+            with pytest.raises(SystemExit):
+                _require_root_or_mount_point(None)
+        captured = capsys.readouterr()
+        combined = captured.out + captured.err
+        assert "/data/data/com.termux/files/usr/bin/nightmare-loader" in combined
+

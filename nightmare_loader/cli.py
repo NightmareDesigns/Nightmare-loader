@@ -64,16 +64,48 @@ from .server import DEFAULT_PORT, start_server
 # Helpers
 # ---------------------------------------------------------------------------
 
+def _termux_nl_exe() -> str:
+    """Return the absolute path to the running nightmare-loader executable.
+
+    When nightmare-loader is installed via pip inside Termux, ``sys.argv[0]``
+    is the full path (e.g. ``/data/data/com.termux/files/usr/bin/nightmare-loader``).
+    Using this absolute path in ``tsu`` invocations avoids "not found" errors
+    that occur because ``tsu`` launches a root shell whose ``$PATH`` does not
+    include Termux's bin directory.
+    """
+    if os.path.isabs(sys.argv[0]):
+        return sys.argv[0]
+    found = shutil.which("nightmare-loader")
+    if found:
+        return found
+    return sys.argv[0]
+
+
+def _termux_bash() -> str:
+    """Return the absolute path to bash for use with ``tsu`` on Termux.
+
+    ``tsu`` strips ``$PATH`` to a minimal root environment, so we must supply
+    the full path to bash (e.g. ``/data/data/com.termux/files/usr/bin/bash``)
+    rather than relying on name resolution.
+    """
+    found = shutil.which("bash")
+    if found:
+        return found
+    prefix = os.environ.get("PREFIX", "/data/data/com.termux/files/usr")
+    return f"{prefix}/bin/bash"
+
+
 def _require_root() -> None:
     """Exit with an error if not running as root."""
     if os.geteuid() != 0:
         if _is_termux():
+            nl = _termux_nl_exe()
             click.echo(
                 "Error: this command requires root.\n"
                 "\n"
                 "On a rooted device, install tsu and run:\n"
                 "  pkg install tsu\n"
-                "  tsu bash -c 'nightmare-loader ...'",
+                f"  tsu {nl} ...",
                 err=True,
             )
         else:
@@ -93,12 +125,13 @@ def _require_root_or_mount_point(mount_point: str | None) -> None:
         return  # pre-mounted path supplied – no root needed
     if os.geteuid() != 0:
         if _is_termux():
+            nl = _termux_nl_exe()
             click.echo(
                 "Error: this command requires root to mount the drive.\n"
                 "\n"
                 "On a rooted device:\n"
                 "  pkg install tsu\n"
-                "  tsu bash -c 'nightmare-loader COMMAND DEVICE'\n"
+                f"  tsu {nl} COMMAND DEVICE\n"
                 "\n"
                 "Without root, if Android has already mounted the drive\n"
                 "(e.g. USB OTG at /storage/XXXX-XXXX), use --mount-point:\n"
@@ -253,7 +286,8 @@ def prepare(device: str, layout: str, label: str, yes: bool) -> None:
 
     click.echo(f"Done. Drive {device} is ready. Add ISOs with:")
     if _is_termux():
-        click.echo(f"  tsu bash -c 'nightmare-loader add {device} <path-to.iso>'")
+        nl = _termux_nl_exe()
+        click.echo(f"  tsu {nl} add {device} <path-to.iso>")
         click.echo(
             "\nWithout root, if Android mounts the drive at /storage/XXXX-XXXX, use:\n"
             f"  nightmare-loader add {device} <path-to.iso> --mount-point /storage/XXXX-XXXX"
@@ -682,14 +716,16 @@ def build_iso_cmd(
     if os.geteuid() != 0:
         if _is_termux():
             if shutil.which("tsu"):
-                cmd = ["tsu", "bash", "-c", shlex.join(cmd)]
+                bash_exe = _termux_bash()
+                cmd = ["tsu", bash_exe, "-c", shlex.join(cmd)]
             else:
+                nl = _termux_nl_exe()
                 click.echo(
                     "Error: root is required to build the ISO.\n"
                     "\n"
                     "Install tsu and retry:\n"
                     "  pkg install tsu\n"
-                    "  nightmare-loader build-iso",
+                    f"  tsu {nl} build-iso",
                     err=True,
                 )
                 sys.exit(1)
