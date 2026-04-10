@@ -100,6 +100,11 @@ def _termux_bash() -> str:
 
 def _require_root() -> None:
     """Exit with an error if not running as root."""
+    # On Windows, check admin status and re-launch with elevation if needed
+    if sys.platform == "win32":
+        _ensure_admin_windows()
+        return
+
     if os.geteuid() != 0:
         if _is_termux():
             nl = _termux_nl_exe()
@@ -126,6 +131,12 @@ def _require_root_or_mount_point(mount_point: str | None) -> None:
     """
     if mount_point:
         return  # pre-mounted path supplied – no root needed
+
+    # On Windows, check admin status and re-launch with elevation if needed
+    if sys.platform == "win32":
+        _ensure_admin_windows()
+        return
+
     if os.geteuid() != 0:
         if _is_termux():
             nl = _termux_nl_exe()

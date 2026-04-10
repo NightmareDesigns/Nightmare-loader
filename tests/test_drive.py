@@ -469,6 +469,96 @@ class TestIsTermux:
             assert termux_dir.exists()
 
 
+class TestIsWsl:
+    """Tests for the _is_wsl() WSL/WSL2 detection helper."""
+
+    def test_detects_via_wsl_distro_name_env(self):
+        from nightmare_loader.drive import _is_wsl
+        with patch.dict("os.environ", {"WSL_DISTRO_NAME": "Ubuntu"}):
+            assert _is_wsl() is True
+
+    def test_detects_via_proc_version_microsoft(self, tmp_path):
+        from nightmare_loader.drive import _is_wsl
+        import os as _os
+        env = {k: v for k, v in _os.environ.items() if k != "WSL_DISTRO_NAME"}
+        proc_version = tmp_path / "proc" / "version"
+        proc_version.parent.mkdir(parents=True, exist_ok=True)
+        proc_version.write_text("Linux version 5.10.16.3-microsoft-standard-WSL2")
+
+        with patch.dict("os.environ", env, clear=True), \
+             patch("nightmare_loader.drive.Path") as mock_path_cls:
+            def path_factory(p):
+                if str(p) == "/proc/version":
+                    return proc_version
+                elif str(p) == "/proc/sys/kernel/osrelease":
+                    mock = MagicMock()
+                    mock.exists.return_value = False
+                    return mock
+                mock = MagicMock()
+                mock.exists.return_value = False
+                return mock
+            mock_path_cls.side_effect = path_factory
+            assert _is_wsl() is True
+
+    def test_detects_via_proc_version_wsl(self, tmp_path):
+        from nightmare_loader.drive import _is_wsl
+        import os as _os
+        env = {k: v for k, v in _os.environ.items() if k != "WSL_DISTRO_NAME"}
+        proc_version = tmp_path / "proc" / "version"
+        proc_version.parent.mkdir(parents=True, exist_ok=True)
+        proc_version.write_text("Linux version 4.4.0-19041-WSL")
+
+        with patch.dict("os.environ", env, clear=True), \
+             patch("nightmare_loader.drive.Path") as mock_path_cls:
+            def path_factory(p):
+                if str(p) == "/proc/version":
+                    return proc_version
+                elif str(p) == "/proc/sys/kernel/osrelease":
+                    mock = MagicMock()
+                    mock.exists.return_value = False
+                    return mock
+                mock = MagicMock()
+                mock.exists.return_value = False
+                return mock
+            mock_path_cls.side_effect = path_factory
+            assert _is_wsl() is True
+
+    def test_detects_via_kernel_osrelease(self, tmp_path):
+        from nightmare_loader.drive import _is_wsl
+        import os as _os
+        env = {k: v for k, v in _os.environ.items() if k != "WSL_DISTRO_NAME"}
+        osrelease = tmp_path / "proc" / "sys" / "kernel" / "osrelease"
+        osrelease.parent.mkdir(parents=True, exist_ok=True)
+        osrelease.write_text("5.10.16.3-microsoft-standard-WSL2")
+
+        with patch.dict("os.environ", env, clear=True), \
+             patch("nightmare_loader.drive.Path") as mock_path_cls:
+            def path_factory(p):
+                if str(p) == "/proc/version":
+                    mock = MagicMock()
+                    mock.exists.return_value = False
+                    return mock
+                elif str(p) == "/proc/sys/kernel/osrelease":
+                    return osrelease
+                mock = MagicMock()
+                mock.exists.return_value = False
+                return mock
+            mock_path_cls.side_effect = path_factory
+            assert _is_wsl() is True
+
+    def test_not_wsl_without_indicators(self):
+        from nightmare_loader.drive import _is_wsl
+        import os as _os
+        env = {k: v for k, v in _os.environ.items() if k != "WSL_DISTRO_NAME"}
+        with patch.dict("os.environ", env, clear=True), \
+             patch("nightmare_loader.drive.Path") as mock_path_cls:
+            # Simulate neither /proc/version nor /proc/sys/kernel/osrelease existing
+            mock_instance = MagicMock()
+            mock_instance.exists.return_value = False
+            mock_path_cls.return_value = mock_instance
+            assert _is_wsl() is False
+
+
 class TestListRemovableDrivesAndroid:
     """Tests for the Android/Termux sysfs drive listing."""
 

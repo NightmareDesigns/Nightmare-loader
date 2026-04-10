@@ -2199,6 +2199,9 @@ async function checkPlatform() {
       // On Android, privilege warning is less actionable – hide it
       document.getElementById('priv-banner').style.display = 'none';
       log('Running on Android/Termux — disk partitioning requires root + Termux packages.', 'warn');
+    } else if (data.wsl) {
+      // WSL detected - show info banner
+      log('Running on WSL (Windows Subsystem for Linux) — full USB access may require USB/IP configuration.', 'info');
     } else if (data.windows) {
       document.getElementById('win-banner').style.display = 'block';
       // Hide the Linux-specific priv banner on Windows – UAC handles elevation
