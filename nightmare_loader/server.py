@@ -10,9 +10,13 @@ API surface
 GET  /api/drives
 GET  /api/isos/<device>          device = URL-encoded, e.g. %2Fdev%2Fsdb
 GET  /api/info?path=<iso_path>
+GET  /api/boot-files              List files in boot files directory
+GET  /api/boot-files/dir          Get boot files directory path
 POST /api/prepare                body: {device, label, layout}
 POST /api/add                    body: {device, iso_path, label?, copy?}
 POST /api/remove                 body: {device, iso_name}
+POST /api/upload                 multipart file upload to boot files directory
+POST /api/boot-files/delete      body: {filename}
 """
 
 from __future__ import annotations
@@ -80,6 +84,10 @@ class _Handler(BaseHTTPRequestHandler):
             params = parse_qs(parsed.query)
             iso_path = unquote(params.get("path", [""])[0])
             self._api_info(iso_path)
+        elif path == "/api/boot-files":
+            self._api_list_boot_files()
+        elif path == "/api/boot-files/dir":
+            self._api_boot_files_dir()
         else:
             self._json({"error": "Not found"}, 404)
 
@@ -87,6 +95,12 @@ class _Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path   = parsed.path
 
+        # Handle file upload separately (multipart/form-data)
+        if path == "/api/upload":
+            self._api_upload()
+            return
+
+        # Handle JSON body for other endpoints
         try:
             body = self._read_json_body()
         except Exception as exc:
@@ -99,6 +113,8 @@ class _Handler(BaseHTTPRequestHandler):
             self._api_add(body)
         elif path == "/api/remove":
             self._api_remove(body)
+        elif path == "/api/boot-files/delete":
+            self._api_delete_boot_file(body)
         else:
             self._json({"error": "Not found"}, 404)
 
@@ -342,6 +358,91 @@ class _Handler(BaseHTTPRequestHandler):
                         pass
 
             self._json({"ok": True, "message": f"Removed '{iso_name}' from {device}."})
+        except Exception as exc:
+            self._json({"ok": False, "error": str(exc)}, 500)
+
+    # ── API: GET /api/boot-files ───────────────────────────────────────
+    def _api_list_boot_files(self) -> None:
+        try:
+            from .boot_files import list_boot_files
+            files = list_boot_files()
+            self._json({"files": files})
+        except Exception as exc:
+            self._json({"files": [], "error": str(exc)})
+
+    # ── API: GET /api/boot-files/dir ───────────────────────────────────
+    def _api_boot_files_dir(self) -> None:
+        try:
+            from .boot_files import get_boot_files_dir
+            boot_dir = get_boot_files_dir()
+            self._json({"directory": str(boot_dir)})
+        except Exception as exc:
+            self._json({"error": str(exc)}, 500)
+
+    # ── API: POST /api/upload ──────────────────────────────────────────
+    def _api_upload(self) -> None:
+        try:
+            import cgi
+            from .boot_files import save_uploaded_file
+
+            # Parse multipart form data
+            content_type = self.headers.get("Content-Type", "")
+            if not content_type.startswith("multipart/form-data"):
+                self._json({"error": "Content-Type must be multipart/form-data"}, 400)
+                return
+
+            # Parse the form
+            form = cgi.FieldStorage(
+                fp=self.rfile,
+                headers=self.headers,
+                environ={
+                    "REQUEST_METHOD": "POST",
+                    "CONTENT_TYPE": content_type,
+                }
+            )
+
+            if "file" not in form:
+                self._json({"error": "No file provided in 'file' field"}, 400)
+                return
+
+            file_item = form["file"]
+            if not file_item.filename:
+                self._json({"error": "No filename provided"}, 400)
+                return
+
+            # Read file data
+            file_data = file_item.file.read()
+            filename = file_item.filename
+
+            # Save the file
+            saved_path = save_uploaded_file(file_data, filename)
+
+            self._json({
+                "ok": True,
+                "message": f"File '{filename}' uploaded successfully.",
+                "path": str(saved_path),
+                "size": len(file_data)
+            })
+        except ValueError as exc:
+            self._json({"ok": False, "error": str(exc)}, 400)
+        except Exception as exc:
+            self._json({"ok": False, "error": str(exc)}, 500)
+
+    # ── API: POST /api/boot-files/delete ───────────────────────────────
+    def _api_delete_boot_file(self, body: dict) -> None:
+        filename = body.get("filename", "").strip()
+
+        if not filename:
+            self._json({"error": "filename is required"}, 400)
+            return
+
+        try:
+            from .boot_files import delete_boot_file
+
+            if delete_boot_file(filename):
+                self._json({"ok": True, "message": f"File '{filename}' deleted."})
+            else:
+                self._json({"error": f"File '{filename}' not found."}, 404)
         except Exception as exc:
             self._json({"ok": False, "error": str(exc)}, 500)
 
