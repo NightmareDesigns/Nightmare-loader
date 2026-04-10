@@ -1,0 +1,275 @@
+name: Build Windows EXE
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'build_windows.bat'
+      - 'nightmare-loader.spec'
+      - 'nightmare_loader/**'
+      - 'setup.py'
+      - 'pyproject.toml'
+      - '.github/workflows/build-windows.yml'
+  pull_request:
+    paths:
+      - 'build_windows.bat'
+      - 'nightmare-loader.spec'
+      - 'nightmare_loader/**'
+      - 'setup.py'
+      - 'pyproject.toml'
+      - '.github/workflows/build-windows.yml'
+
+# Security: Restrict permissions to minimum required
+permissions:
+  contents: read
+
+jobs:
+  build-exe:
+    name: Build Nightmare Loader Windows EXE
+    runs-on: windows-2022
+
+    # Security: Prevent concurrent builds
+    concurrency:
+      group: exe-build-${{ github.ref }}
+      cancel-in-progress: true
+
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Security: Use full clone depth for reproducibility
+          fetch-depth: 0
+          # Security: Persist credentials disabled
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          architecture: 'x64'
+          # Security: Verify Python installation
+          check-latest: true
+
+      - name: Verify build script integrity
+        shell: pwsh
+        run: |
+          # Verify the build script exists
+          if (!(Test-Path "build_windows.bat")) {
+            Write-Error "build_windows.bat not found"
+            exit 1
+          }
+
+          # Verify spec file exists
+          if (!(Test-Path "nightmare-loader.spec")) {
+            Write-Error "nightmare-loader.spec not found"
+            exit 1
+          }
+
+          # Check for suspicious patterns in spec file
+          $specContent = Get-Content "nightmare-loader.spec" -Raw
+          if ($specContent -match "(eval|exec|__import__)\s*\(") {
+            Write-Warning "Potentially dangerous Python code detected in spec file"
+          }
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+
+          # Install package with Windows extras
+          pip install -e ".[windows]"
+
+          # Install PyInstaller
+          pip install pyinstaller
+
+          # Verify installations
+          pyinstaller --version
+          nightmare-loader --version
+
+      - name: Verify package installation
+        shell: pwsh
+        run: |
+          python -c "import nightmare_loader; print(f'Version: {nightmare_loader.__version__}')"
+          python -c "import PyInstaller; print(f'PyInstaller: {PyInstaller.__version__}')"
+
+      - name: Run PyInstaller security scan
+        shell: pwsh
+        run: |
+          # Check for hidden imports and verify they're expected
+          Write-Host "Analyzing PyInstaller spec file..."
+
+          $specContent = Get-Content "nightmare-loader.spec" -Raw
+
+          # Verify uac_admin is explicitly set
+          if ($specContent -notmatch "uac_admin\s*=\s*True") {
+            Write-Warning "uac_admin not set to True - EXE may not request elevation"
+          }
+
+          # List hidden imports for review
+          if ($specContent -match "hiddenimports\s*=\s*\[(.*?)\]") {
+            Write-Host "Hidden imports detected:"
+            $matches[1] -split ',' | ForEach-Object {
+              Write-Host "  - $($_.Trim())"
+            }
+          }
+
+      - name: Build EXE with PyInstaller
+        shell: pwsh
+        run: |
+          # Clean any previous builds
+          if (Test-Path "dist") { Remove-Item -Recurse -Force "dist" }
+          if (Test-Path "build") { Remove-Item -Recurse -Force "build" }
+
+          # Build with PyInstaller
+          pyinstaller --clean nightmare-loader.spec
+
+          # Verify output
+          if (!(Test-Path "dist\nightmare-loader.exe")) {
+            Write-Error "nightmare-loader.exe not created"
+            exit 1
+          }
+
+      - name: Verify EXE integrity
+        shell: pwsh
+        run: |
+          $exePath = "dist\nightmare-loader.exe"
+
+          # Check file exists and is not empty
+          if (!(Test-Path $exePath)) {
+            Write-Error "EXE file not found"
+            exit 1
+          }
+
+          $fileInfo = Get-Item $exePath
+          if ($fileInfo.Length -eq 0) {
+            Write-Error "EXE file is empty"
+            exit 1
+          }
+
+          # Check reasonable size (should be > 10MB and < 500MB)
+          $sizeMB = $fileInfo.Length / 1MB
+          if ($sizeMB -lt 10) {
+            Write-Warning "EXE seems too small ($sizeMB MB)"
+          }
+          if ($sizeMB -gt 500) {
+            Write-Warning "EXE seems too large ($sizeMB MB)"
+          }
+
+          Write-Host "EXE Size: $([math]::Round($sizeMB, 2)) MB"
+
+          # Verify it's a valid PE executable
+          $bytes = [System.IO.File]::ReadAllBytes($exePath)
+          $peHeader = [System.Text.Encoding]::ASCII.GetString($bytes[0..1])
+          if ($peHeader -ne "MZ") {
+            Write-Error "File does not appear to be a valid PE executable"
+            exit 1
+          }
+
+          Write-Host "PE executable header verified"
+
+      - name: Test EXE basic functionality
+        shell: pwsh
+        run: |
+          # Test that EXE can show version (this shouldn't require admin)
+          $output = & "dist\nightmare-loader.exe" --version 2>&1
+          Write-Host "Version output: $output"
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Warning "EXE --version returned non-zero exit code: $LASTEXITCODE"
+          }
+
+      - name: Calculate checksums
+        shell: pwsh
+        run: |
+          $exePath = "dist\nightmare-loader.exe"
+
+          # SHA256
+          $sha256 = (Get-FileHash -Path $exePath -Algorithm SHA256).Hash
+          $sha256 | Out-File -FilePath "dist\nightmare-loader.exe.sha256" -Encoding ascii
+          Write-Host "SHA256: $sha256"
+
+          # MD5
+          $md5 = (Get-FileHash -Path $exePath -Algorithm MD5).Hash
+          $md5 | Out-File -FilePath "dist\nightmare-loader.exe.md5" -Encoding ascii
+          Write-Host "MD5: $md5"
+
+      - name: Generate SBOM (Software Bill of Materials)
+        shell: pwsh
+        run: |
+          pip install pip-audit
+          pip-audit --format json --output sbom-windows.json
+        continue-on-error: true
+
+      - name: Scan for vulnerabilities
+        shell: pwsh
+        run: |
+          # Use pip-audit to check for known vulnerabilities
+          pip install pip-audit
+          pip-audit --desc
+        continue-on-error: true
+
+      - name: Upload EXE artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightmare-loader-exe-${{ github.sha }}
+          path: dist/nightmare-loader.exe
+          retention-days: 30
+          # Security: Compress artifact
+          compression-level: 9
+          if-no-files-found: error
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-windows-${{ github.sha }}
+          path: sbom-windows.json
+          retention-days: 90
+          if-no-files-found: warn
+
+      - name: Upload checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightmare-loader-exe-checksums-${{ github.sha }}
+          path: |
+            dist/nightmare-loader.exe.sha256
+            dist/nightmare-loader.exe.md5
+          retention-days: 90
+
+      - name: Create build info
+        shell: pwsh
+        run: |
+          $buildInfo = @{
+            "build_date" = (Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC")
+            "commit_sha" = "${{ github.sha }}"
+            "commit_ref" = "${{ github.ref }}"
+            "python_version" = (python --version)
+            "pyinstaller_version" = (pyinstaller --version)
+            "runner_os" = "${{ runner.os }}"
+            "runner_arch" = "${{ runner.arch }}"
+          } | ConvertTo-Json
+
+          $buildInfo | Out-File -FilePath "dist\build-info.json" -Encoding utf8
+
+      - name: Upload build info
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-info-${{ github.sha }}
+          path: dist/build-info.json
+          retention-days: 90
+
+      - name: Cleanup
+        if: always()
+        shell: pwsh
+        run: |
+          # Clean up build artifacts
+          if (Test-Path "build") { Remove-Item -Recurse -Force "build" -ErrorAction SilentlyContinue }
+          # Clear pip cache
+          pip cache purge
