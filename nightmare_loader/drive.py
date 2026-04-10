@@ -45,6 +45,35 @@ def _is_termux() -> bool:
     return Path("/data/data/com.termux").exists()
 
 
+def _is_wsl() -> bool:
+    """Return True when running inside Windows Subsystem for Linux (WSL/WSL2)."""
+    # WSL sets WSL_DISTRO_NAME environment variable (WSL1 and WSL2)
+    if os.environ.get("WSL_DISTRO_NAME"):
+        return True
+
+    # Check /proc/version for "microsoft" or "WSL" string
+    proc_version = Path("/proc/version")
+    if proc_version.exists():
+        try:
+            content = proc_version.read_text().lower()
+            if "microsoft" in content or "wsl" in content:
+                return True
+        except (OSError, PermissionError):
+            pass
+
+    # Check /proc/sys/kernel/osrelease as fallback
+    osrelease = Path("/proc/sys/kernel/osrelease")
+    if osrelease.exists():
+        try:
+            content = osrelease.read_text().lower()
+            if "microsoft" in content or "wsl" in content:
+                return True
+        except (OSError, PermissionError):
+            pass
+
+    return False
+
+
 def list_removable_drives() -> list[dict]:
     """
     Return a list of removable block devices (USB drives, etc.).
