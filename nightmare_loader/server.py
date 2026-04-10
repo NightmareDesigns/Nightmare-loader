@@ -32,6 +32,7 @@ import json
 import os
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -1139,14 +1140,24 @@ def start_server(port: int = DEFAULT_PORT, open_browser: bool = True) -> None:
     open_browser:
         If True, open the default system browser automatically after 0.5 s.
     """
-    server = ThreadingHTTPServer(("127.0.0.1", port), _Handler)
-    url    = f"http://127.0.0.1:{port}"
+    server = ThreadingHTTPServer(("0.0.0.0", port), _Handler)
 
-    print(f"Nightmare Loader UI  →  {url}")
+    # Resolve the LAN address so users can share it with other devices.
+    try:
+        lan_ip = socket.gethostbyname(socket.gethostname())
+    except OSError:
+        lan_ip = "0.0.0.0"
+
+    local_url = f"http://localhost:{port}"
+    lan_url   = f"http://{lan_ip}:{port}"
+
+    print(f"Nightmare Loader UI  →  {local_url}")
+    if lan_ip not in ("0.0.0.0", "127.0.0.1"):
+        print(f"Network access       →  {lan_url}")
     print("Press Ctrl-C to stop.\n")
 
     if open_browser:
-        threading.Timer(0.5, lambda: webbrowser.open(url)).start()
+        threading.Timer(0.5, lambda: webbrowser.open(local_url)).start()
 
     try:
         server.serve_forever()
