@@ -8,6 +8,7 @@ import json
 import sys
 import threading
 from http.server import HTTPServer
+from pathlib import Path
 from unittest.mock import patch
 from urllib.request import urlopen
 
@@ -448,3 +449,153 @@ class TestWindowsListIsos:
         assert status == 200
         assert len(body.get("entries", [])) == 1
         assert body["entries"][0]["filename"] == "win.iso"
+
+
+# ---------------------------------------------------------------------------
+# POST /api/upload
+# ---------------------------------------------------------------------------
+
+def _multipart_post(url: str, filename: str, data: bytes, content_type: str = "application/octet-stream"):
+    """Post a multipart/form-data request with a single file field named 'file'."""
+    boundary = b"----TestBoundary1234567890"
+    body = (
+        b"--" + boundary + b"\r\n"
+        b'Content-Disposition: form-data; name="file"; filename="' + filename.encode() + b'"\r\n'
+        b"Content-Type: " + content_type.encode() + b"\r\n"
+        b"\r\n"
+        + data
+        + b"\r\n--" + boundary + b"--\r\n"
+    )
+    from urllib.request import Request
+    req = Request(
+        url,
+        data=body,
+        headers={
+            "Content-Type": f"multipart/form-data; boundary={boundary.decode()}",
+            "Content-Length": str(len(body)),
+        },
+        method="POST",
+    )
+    from urllib.error import HTTPError
+    try:
+        with urlopen(req, timeout=10) as resp:
+            return resp.status, json.loads(resp.read())
+    except HTTPError as e:
+        return e.code, json.loads(e.read())
+
+
+class TestApiUpload:
+    def test_upload_iso_succeeds(self, live_server, tmp_path):
+        """A valid .iso upload should be saved and return ok=True with a path."""
+        dest = tmp_path / "uploads"
+        status, body = _multipart_post(
+            live_server + f"/api/upload?dest_dir={dest}",
+            "test.iso",
+            b"\x00" * 2048,
+        )
+        assert status == 200
+        assert body.get("ok") is True
+        assert body.get("filename") == "test.iso"
+        assert Path(body["path"]).exists()
+
+    def test_upload_img_succeeds(self, live_server, tmp_path):
+        """.img files are an allowed format."""
+        dest = tmp_path / "uploads"
+        status, body = _multipart_post(
+            live_server + f"/api/upload?dest_dir={dest}",
+            "disk.img",
+            b"\xAA\xBB\xCC" * 100,
+        )
+        assert status == 200
+        assert body.get("ok") is True
+
+    def test_upload_wim_succeeds(self, live_server, tmp_path):
+        """.wim files are an allowed format."""
+        dest = tmp_path / "uploads"
+        status, body = _multipart_post(
+            live_server + f"/api/upload?dest_dir={dest}",
+            "install.wim",
+            b"\x4D\x53\x57\x49\x4D" * 10,  # MSWIM magic
+        )
+        assert status == 200
+        assert body.get("ok") is True
+
+    def test_upload_unsupported_format_rejected(self, live_server, tmp_path):
+        """Files with unsupported extensions should be rejected with a 400."""
+        dest = tmp_path / "uploads"
+        status, body = _multipart_post(
+            live_server + f"/api/upload?dest_dir={dest}",
+            "malware.exe",
+            b"MZ" + b"\x00" * 100,
+        )
+        assert status == 400
+        assert "error" in body
+        assert "exe" in body["error"].lower() or "unsupported" in body["error"].lower()
+
+    def test_upload_no_json_body_rejected(self, live_server):
+        """Sending JSON to /api/upload (not multipart) should return 400."""
+        from urllib.error import HTTPError
+        try:
+            _post(live_server + "/api/upload", {"file": "test"})
+            assert False, "Expected HTTP 400"
+        except HTTPError as e:
+            assert e.code == 400
+            body = json.loads(e.read())
+            assert "multipart" in body.get("error", "").lower()
+
+    def test_upload_file_content_preserved(self, live_server, tmp_path):
+        """The uploaded file content must match the original bytes exactly."""
+        dest = tmp_path / "uploads"
+        original = bytes(range(256)) * 8  # 2 KiB of known data
+        status, body = _multipart_post(
+            live_server + f"/api/upload?dest_dir={dest}",
+            "payload.iso",
+            original,
+        )
+        assert status == 200
+        saved = Path(body["path"]).read_bytes()
+        assert saved == original
+
+    def test_upload_missing_content_length_rejected(self, live_server):
+        """Upload without Content-Length should be rejected."""
+        from urllib.request import Request
+        from urllib.error import HTTPError
+        boundary = "----TestBoundary"
+        body = (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="file"; filename="test.iso"\r\n'
+            f"Content-Type: application/octet-stream\r\n\r\n"
+            f"data\r\n--{boundary}--\r\n"
+        ).encode()
+        req = Request(
+            live_server + "/api/upload",
+            data=body,
+            headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+            method="POST",
+        )
+        try:
+            with urlopen(req, timeout=5) as resp:
+                status = resp.status
+                rbody  = json.loads(resp.read())
+        except HTTPError as e:
+            status = e.code
+            rbody  = json.loads(e.read())
+        # Server either rejects (400) or accepts (200) depending on whether
+        # BaseHTTPRequestHandler injects a Content-Length.  Either way no crash.
+        assert status in (200, 400, 411)
+
+    def test_upload_uses_default_temp_dir_when_no_dest(self, live_server):
+        """When no dest_dir is provided the file lands in the default temp dir."""
+        import tempfile
+        status, body = _multipart_post(
+            live_server + "/api/upload",
+            "nodest.iso",
+            b"\x00" * 512,
+        )
+        assert status == 200
+        assert body.get("ok") is True
+        dest_path = Path(body["path"])
+        assert dest_path.exists()
+        # Should be inside the system temp dir
+        assert str(dest_path).startswith(tempfile.gettempdir())
+

@@ -18,6 +18,7 @@ GET  /api/download/status?id=…   ISO download progress
 POST /api/prepare                body: {device, label, layout}
 POST /api/add                    body: {device, iso_path, label?, copy?}
 POST /api/remove                 body: {device, iso_name}
+POST /api/upload                 multipart/form-data: file=<image>; dest_dir=<dir>?
 POST /api/update/install         install latest release from GitHub
 POST /api/wifi/connect           body: {ssid, password?}
 POST /api/wifi/disconnect        disconnect current WiFi
@@ -29,6 +30,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -50,6 +52,22 @@ _UI_DIR = Path(__file__).parent / "ui"
 _INDEX  = _UI_DIR / "index.html"
 
 DEFAULT_PORT = 8321
+
+# ---------------------------------------------------------------------------
+# Upload configuration
+# ---------------------------------------------------------------------------
+
+# Supported bootable image extensions for the upload endpoint
+ALLOWED_UPLOAD_EXTS: frozenset[str] = frozenset({
+    ".iso",   # ISO 9660 CD/DVD image
+    ".img",   # raw disk image
+    ".wim",   # Windows Imaging Format
+    ".vhd",   # Virtual Hard Disk
+    ".vhdx",  # Virtual Hard Disk v2
+    ".vmdk",  # VMware Virtual Machine Disk
+    ".vdi",   # VirtualBox Disk Image
+    ".raw",   # raw sector dump
+})
 
 
 # ---------------------------------------------------------------------------
@@ -148,6 +166,11 @@ class _Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         parsed = urlparse(self.path)
         path   = parsed.path
+
+        # /api/upload uses multipart/form-data, not JSON – handle it separately
+        if path == "/api/upload":
+            self._api_upload()
+            return
 
         try:
             body = self._read_json_body()
@@ -484,6 +507,195 @@ class _Handler(BaseHTTPRequestHandler):
             self._json({"ok": True, "message": f"Removed '{iso_name}' from {device}."})
         except Exception as exc:
             self._json({"ok": False, "error": str(exc)}, 500)
+
+    # ── API: POST /api/upload (multipart/form-data) ───────────────────
+    def _api_upload(self) -> None:
+        """
+        Accept a multipart/form-data upload and save the file to a temp
+        directory (or a caller-supplied ``dest_dir``).
+
+        Query parameters
+        ----------------
+        dest_dir  – absolute path to save directory (optional; defaults to a
+                    per-session temp directory under the system temp dir)
+
+        Form fields
+        -----------
+        file      – the image file (required, multipart/form-data part)
+
+        Supported extensions
+        --------------------
+        .iso  .img  .wim  .vhd  .vhdx  .vmdk  .vdi  .raw
+
+        Response
+        --------
+        {"ok": true, "path": "<absolute-path>", "filename": "<name>"}
+        """
+        parsed    = urlparse(self.path)
+        qs_params = parse_qs(parsed.query)
+        dest_dir_qp = unquote(qs_params.get("dest_dir", [""])[0]).strip()
+
+        content_type = self.headers.get("Content-Type", "")
+        if "multipart/form-data" not in content_type:
+            self._json({"error": "Expected multipart/form-data"}, 400)
+            return
+
+        content_length = int(self.headers.get("Content-Length") or 0)
+        if content_length <= 0:
+            self._json({"error": "Content-Length is required for file uploads"}, 400)
+            return
+
+        try:
+            filename = self._parse_upload_headers(content_type, content_length)
+        except ValueError as exc:
+            self._json({"error": str(exc)}, 400)
+            return
+
+        ext = Path(filename).suffix.lower()
+        if ext not in ALLOWED_UPLOAD_EXTS:
+            # Drain the remaining body so the connection stays usable.
+            # _parse_upload_headers already consumed some bytes; only drain
+            # what hasn't been read from rfile yet.
+            try:
+                self.rfile.read(self._upload_remaining)
+            except OSError:
+                pass
+            allowed_str = ", ".join(sorted(ALLOWED_UPLOAD_EXTS))
+            self._json(
+                {"error": f"Unsupported file format '{ext}'. Supported: {allowed_str}"},
+                400,
+            )
+            return
+
+        # Sanitise filename: keep alphanumerics, hyphens, underscores, dots, spaces
+        safe_name = "".join(c for c in filename if c.isalnum() or c in "-_. ")
+        if not safe_name:
+            safe_name = "upload" + ext
+
+        dest_dir_override = dest_dir_qp
+        if dest_dir_override:
+            # Basic validation: reject control characters and path traversal
+            if any(ord(c) < 0x20 for c in dest_dir_override):
+                self._json({"error": "dest_dir contains invalid characters"}, 400)
+                return
+            upload_dir = Path(dest_dir_override).resolve()
+        else:
+            upload_dir = Path(tempfile.gettempdir()) / "nightmare-loader-uploads"
+
+        try:
+            upload_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            self._json({"error": f"Cannot create upload directory: {exc}"}, 500)
+            return
+
+        dest = upload_dir / safe_name
+
+        try:
+            self._stream_multipart_file_to_disk(content_type, content_length, dest)
+        except Exception as exc:
+            try:
+                dest.unlink(missing_ok=True)
+            except OSError:
+                pass
+            self._json({"ok": False, "error": f"Upload failed: {exc}"}, 500)
+            return
+
+        self._json({"ok": True, "path": str(dest), "filename": safe_name})
+
+    def _parse_upload_headers(self, content_type: str, content_length: int) -> tuple[str, str]:
+        """
+        Read just enough of rfile to parse the multipart part headers and
+        extract the filename from the first file part.
+
+        Returns the original filename string.
+
+        Raises ValueError on malformed input.
+        """
+        m = re.search(r'boundary=([^\s;]+)', content_type)
+        if not m:
+            raise ValueError("Missing boundary in Content-Type")
+        boundary = m.group(1).strip('"').encode()
+
+        # Read enough bytes to find the end of the first part's headers.
+        # We keep reading 512-byte chunks until we see the double CRLF
+        # that terminates the MIME header block.
+        header_buf = b""
+        remaining  = content_length
+
+        while remaining > 0 and b"\r\n\r\n" not in header_buf:
+            chunk = self.rfile.read(min(512, remaining))
+            if not chunk:
+                break
+            remaining -= len(chunk)
+            header_buf += chunk
+
+        sep = header_buf.find(b"\r\n\r\n")
+        if sep == -1:
+            raise ValueError("Malformed multipart data: missing header terminator")
+
+        headers_text = header_buf[:sep].decode("utf-8", errors="replace")
+
+        # Store the already-read data tail (file body starts right after sep+4)
+        self._upload_preamble  = header_buf[sep + 4:]
+        self._upload_remaining = remaining
+        self._upload_boundary  = boundary
+
+        # Extract filename from Content-Disposition
+        fn_m = re.search(
+            r'Content-Disposition[^\r\n]*;\s*filename\*?=["\']?([^"\'\r\n;]+)',
+            headers_text,
+            re.IGNORECASE,
+        )
+        if not fn_m:
+            raise ValueError("No filename found in multipart Content-Disposition")
+        filename = Path(fn_m.group(1).strip()).name  # strip path components
+
+        return filename
+
+    def _stream_multipart_file_to_disk(
+        self,
+        content_type: str,
+        content_length: int,
+        dest: Path,
+    ) -> None:
+        """
+        Stream the file data from a multipart/form-data body to *dest*.
+
+        Must be called after :meth:`_parse_upload_headers` which populates
+        ``self._upload_preamble``, ``self._upload_remaining``, and
+        ``self._upload_boundary``.
+        """
+        boundary  = self._upload_boundary
+        trailer   = b"\r\n--" + boundary + b"--\r\n"
+        alt_trail = b"\r\n--" + boundary + b"--"
+        guard     = len(trailer)          # keep this many bytes in pending
+        CHUNK     = 1 << 17              # 128 KiB per read
+
+        # pending holds the last `guard` bytes that we haven't yet written,
+        # so we can detect and strip the trailing boundary.
+        pending   = self._upload_preamble
+        remaining = self._upload_remaining
+
+        with open(dest, "wb") as fh:
+            while remaining > 0:
+                data = self.rfile.read(min(CHUNK, remaining))
+                if not data:
+                    break
+                remaining -= len(data)
+                pending   += data
+
+                # Flush the safe prefix (everything except the last `guard` bytes)
+                if len(pending) > guard:
+                    fh.write(pending[:-guard])
+                    pending = pending[-guard:]
+
+            # Strip the trailing multipart boundary before writing the last bytes
+            if pending.endswith(trailer):
+                pending = pending[:-len(trailer)]
+            elif pending.endswith(alt_trail):
+                pending = pending[:-len(alt_trail)]
+
+            fh.write(pending)
 
     # ── API: GET /api/browse?path=… ───────────────────────────────────
     def _api_browse(self, browse_path: str) -> None:

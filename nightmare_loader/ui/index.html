@@ -553,6 +553,52 @@
       flex-wrap: wrap;
     }
 
+    /* ── Source-mode tabs (By Path / Upload) ───────────────────────── */
+    .src-tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 4px;
+    }
+    .src-tab {
+      flex: 1;
+      padding: 5px 8px;
+      background: rgba(0,20,6,0.6);
+      border: 1px solid var(--green-dark);
+      border-radius: 3px;
+      color: var(--muted);
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 0.72rem;
+      letter-spacing: 0.05em;
+      transition: background 0.15s, color 0.15s;
+    }
+    .src-tab:hover  { background: rgba(0,40,12,0.7); color: var(--green); }
+    .src-tab.active { background: rgba(0,60,18,0.8); color: var(--green); border-color: var(--green); }
+
+    /* ── File input ─────────────────────────────────────────────────── */
+    input[type="file"] {
+      background: rgba(0,20,6,0.8);
+      border: 1px solid var(--green-dark);
+      border-radius: 3px;
+      color: var(--green);
+      font-family: inherit;
+      font-size: 0.72rem;
+      padding: 4px 6px;
+      cursor: pointer;
+      width: 100%;
+    }
+    input[type="file"]::-webkit-file-upload-button {
+      background: rgba(0,40,12,0.8);
+      border: 1px solid var(--green-dark);
+      border-radius: 2px;
+      color: var(--green);
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 0.7rem;
+      margin-right: 8px;
+      padding: 2px 8px;
+    }
+
     /* ── Lists ─────────────────────────────────────────────────────── */
     .item-list {
       list-style: none;
@@ -1052,40 +1098,79 @@
   </div>
 
   <!-- ┌── ISO LOADER (Add) ───────────────────────────────────────────┐ -->
-  <div class="os-win" id="win-addiso" style="left:800px;top:10px;width:340px;display:none">
+  <div class="os-win" id="win-addiso" style="left:800px;top:10px;width:360px;display:none">
     <div class="win-bar">
       <span class="win-bar-icon">📀</span>
-      <span class="win-bar-title">ISO Loader — Add ISO</span>
+      <span class="win-bar-title">ISO Loader — Add Distro</span>
       <div class="win-btns">
         <div class="wbtn wbtn-min"   onclick="minimizeWin('win-addiso')"></div>
         <div class="wbtn wbtn-close" onclick="closeWin('win-addiso')"></div>
       </div>
     </div>
     <div class="win-body">
-      <div class="field">
-        <label>Target Device</label>
-        <input type="text" id="add-device" placeholder="/dev/sdb" />
+      <!-- Source mode tabs -->
+      <div class="src-tabs">
+        <button class="src-tab active" id="tab-path"   onclick="setSrcTab('path')">📂 By Path</button>
+        <button class="src-tab"        id="tab-upload" onclick="setSrcTab('upload')">⬆ Upload File</button>
       </div>
-      <div class="field">
-        <label>ISO Path on Host</label>
-        <input type="text" id="add-iso-path" placeholder="/home/user/ubuntu.iso" />
-      </div>
-      <div class="field">
-        <label>Custom Menu Label <small style="color:var(--muted)">(optional)</small></label>
-        <input type="text" id="add-label" placeholder="Auto-detected" />
-      </div>
-      <div class="field">
-        <label>Mode</label>
-        <div class="toggle-group">
-          <input type="radio" name="copy-mode" id="copy-yes" value="copy" checked />
-          <label for="copy-yes">Copy to drive</label>
-          <input type="radio" name="copy-mode" id="copy-no" value="nocopy" />
-          <label for="copy-no">Register only</label>
+
+      <!-- ── Path mode ── -->
+      <div id="src-path-section">
+        <div class="field">
+          <label>Target Device</label>
+          <input type="text" id="add-device" placeholder="/dev/sdb" />
+        </div>
+        <div class="field">
+          <label>Image Path on Host</label>
+          <input type="text" id="add-iso-path" placeholder="/home/user/ubuntu.iso" />
+        </div>
+        <div class="field">
+          <label>Custom Menu Label <small style="color:var(--muted)">(optional)</small></label>
+          <input type="text" id="add-label" placeholder="Auto-detected" />
+        </div>
+        <div class="field">
+          <label>Mode</label>
+          <div class="toggle-group">
+            <input type="radio" name="copy-mode" id="copy-yes" value="copy" checked />
+            <label for="copy-yes">Copy to drive</label>
+            <input type="radio" name="copy-mode" id="copy-no" value="nocopy" />
+            <label for="copy-no">Register only</label>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-green" onclick="addISO()">+ Add</button>
+          <button class="btn btn-ghost" onclick="inspectISOPath()">🔍 Inspect</button>
         </div>
       </div>
-      <div class="btn-row">
-        <button class="btn btn-green" onclick="addISO()">+ Add ISO</button>
-        <button class="btn btn-ghost" onclick="inspectISOPath()">🔍 Inspect</button>
+
+      <!-- ── Upload mode ── -->
+      <div id="src-upload-section" style="display:none">
+        <div class="field">
+          <label>Target Device</label>
+          <input type="text" id="upload-device" placeholder="/dev/sdb" />
+        </div>
+        <div class="field">
+          <label>Image File <small style="color:var(--muted)">.iso .img .wim .vhd .vhdx .vmdk .vdi .raw</small></label>
+          <input type="file" id="upload-file-input"
+                 accept=".iso,.img,.wim,.vhd,.vhdx,.vmdk,.vdi,.raw"
+                 onchange="onUploadFileSelected(this)" />
+        </div>
+        <div class="field">
+          <label>Save to Directory <small style="color:var(--muted)">(optional)</small></label>
+          <input type="text" id="upload-dest-dir" placeholder="Default: system temp dir" />
+        </div>
+        <div class="field">
+          <label>Custom Menu Label <small style="color:var(--muted)">(optional)</small></label>
+          <input type="text" id="upload-label" placeholder="Auto-detected" />
+        </div>
+        <div id="upload-progress-wrap" class="progress-wrap" style="display:none">
+          <div class="progress-bar" id="upload-progress-bar"></div>
+        </div>
+        <div id="upload-status" style="font-size:0.7rem;color:var(--muted);min-height:1.2em"></div>
+        <div class="btn-row">
+          <button class="btn btn-green" id="upload-btn" onclick="uploadAndAdd()">⬆ Upload &amp; Add</button>
+          <button class="btn btn-ghost" onclick="cancelUpload()">✕ Cancel</button>
+        </div>
       </div>
     </div>
   </div>
@@ -2272,6 +2357,23 @@ async function doPrepare(device, label, layout) {
 /* ═══════════════════════════════════════════════════════════════════
    ADD ISO
 ═══════════════════════════════════════════════════════════════════ */
+
+/* Source-mode tab toggle (By Path ↔ Upload File) */
+function setSrcTab(mode) {
+  document.getElementById('src-path-section').style.display   = mode === 'path'   ? '' : 'none';
+  document.getElementById('src-upload-section').style.display = mode === 'upload' ? '' : 'none';
+  document.getElementById('tab-path').classList.toggle('active',   mode === 'path');
+  document.getElementById('tab-upload').classList.toggle('active', mode === 'upload');
+  // Mirror device field between the two sections
+  if (mode === 'upload') {
+    const dev = document.getElementById('add-device').value.trim();
+    if (dev) document.getElementById('upload-device').value = dev;
+  } else {
+    const dev = document.getElementById('upload-device').value.trim();
+    if (dev) document.getElementById('add-device').value = dev;
+  }
+}
+
 async function addISO() {
   const device  = document.getElementById('add-device').value.trim();
   const path    = document.getElementById('add-iso-path').value.trim();
@@ -2279,19 +2381,19 @@ async function addISO() {
   const doCopy  = document.querySelector('input[name="copy-mode"]:checked').value === 'copy';
 
   if (!device) { log('Add ISO: no device specified.', 'err'); return; }
-  if (!path)   { log('Add ISO: no ISO path specified.', 'err'); return; }
+  if (!path)   { log('Add ISO: no image path specified.', 'err'); return; }
 
-  setStatus('Adding ISO…', true);
-  log(`━━ ADD ISO ${path.split('/').pop()} → ${device} ━━`, 'head');
+  setStatus('Adding image…', true);
+  log(`━━ ADD ${path.split('/').pop()} → ${device} ━━`, 'head');
 
   try {
     const res = await apiPost('/api/add', { device, iso_path: path, label, copy: doCopy });
-    log(res.message || 'ISO added successfully.', 'ok');
+    log(res.message || 'Image added successfully.', 'ok');
     setStatus('READY');
     // Refresh vault if same device
     if (document.getElementById('vault-device').value === device) loadVault();
   } catch (e) {
-    log('Add ISO failed: ' + e.message, 'err');
+    log('Add failed: ' + e.message, 'err');
     setStatus('ERROR');
   }
 }
@@ -2301,6 +2403,130 @@ function inspectISOPath() {
   if (!path) { log('Inspect: no path provided.', 'err'); return; }
   document.getElementById('inspect-path').value = path;
   inspectISO();
+}
+
+/* ── Upload feature ─────────────────────────────────────────────── */
+let _uploadXHR = null;
+
+function onUploadFileSelected(input) {
+  if (!input.files.length) return;
+  const name = input.files[0].name;
+  document.getElementById('upload-status').textContent = `Selected: ${name}`;
+}
+
+async function uploadAndAdd() {
+  const device   = document.getElementById('upload-device').value.trim();
+  const fileInput = document.getElementById('upload-file-input');
+  const destDir  = document.getElementById('upload-dest-dir').value.trim();
+  const label    = document.getElementById('upload-label').value.trim() || null;
+
+  if (!device)            { log('Upload: no device specified.', 'err'); return; }
+  if (!fileInput.files.length) { log('Upload: no file selected.', 'err'); return; }
+
+  const file = fileInput.files[0];
+  const allowedExts = ['.iso', '.img', '.wim', '.vhd', '.vhdx', '.vmdk', '.vdi', '.raw'];
+  const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
+  if (!allowedExts.includes(ext)) {
+    log(`Upload: unsupported format '${ext}'. Supported: ${allowedExts.join(' ')}`, 'err');
+    return;
+  }
+
+  const btn      = document.getElementById('upload-btn');
+  const wrap     = document.getElementById('upload-progress-wrap');
+  const bar      = document.getElementById('upload-progress-bar');
+  const statusEl = document.getElementById('upload-status');
+
+  btn.disabled = true;
+  wrap.style.display = '';
+  bar.style.width    = '0%';
+  bar.style.background = '';
+  setStatus('Uploading…', true);
+  log(`━━ UPLOAD ${file.name} ━━`, 'head');
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const uploadedPath = await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      _uploadXHR = xhr;
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const pct = Math.round(e.loaded / e.total * 90);
+          bar.style.width = pct + '%';
+          const mb = (e.loaded / 1048576).toFixed(1);
+          const total = (e.total / 1048576).toFixed(1);
+          statusEl.textContent = `Uploading… ${mb} / ${total} MB`;
+        }
+      };
+
+      xhr.onload = () => {
+        _uploadXHR = null;
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const data = JSON.parse(xhr.responseText);
+            if (data.ok) resolve(data.path);
+            else reject(new Error(data.error || 'Upload error'));
+          } catch (e) { reject(new Error('Invalid server response')); }
+        } else {
+          try {
+            const data = JSON.parse(xhr.responseText);
+            reject(new Error(data.error || `HTTP ${xhr.status}`));
+          } catch { reject(new Error(`HTTP ${xhr.status}`)); }
+        }
+      };
+      xhr.onerror = () => { _uploadXHR = null; reject(new Error('Network error during upload')); };
+      xhr.onabort = () => { _uploadXHR = null; reject(new Error('Upload cancelled')); };
+
+      let url = '/api/upload';
+      if (destDir) url += '?dest_dir=' + encodeURIComponent(destDir);
+      xhr.open('POST', url);
+      xhr.send(formData);
+    });
+
+    bar.style.width = '95%';
+    statusEl.textContent = 'Upload complete — registering on drive…';
+    log(`Upload complete: ${uploadedPath}`, 'ok');
+
+    // Register the uploaded file on the target device
+    const res = await apiPost('/api/add', {
+      device,
+      iso_path: uploadedPath,
+      label,
+      copy: false,   // file is already at its final location
+    });
+    bar.style.width = '100%';
+    log(res.message || 'Image added successfully.', 'ok');
+    statusEl.textContent = 'Done!';
+    setStatus('READY');
+    // Sync device field back and refresh vault if open
+    document.getElementById('add-device').value = device;
+    if (document.getElementById('vault-device').value === device) loadVault();
+  } catch (e) {
+    bar.style.width = '100%';
+    bar.style.background = '#cc0000';
+    log('Upload/add failed: ' + e.message, 'err');
+    statusEl.textContent = 'Error: ' + e.message;
+    setStatus('ERROR');
+  } finally {
+    btn.disabled = false;
+    setTimeout(() => {
+      wrap.style.display = 'none';
+      bar.style.width    = '0%';
+      bar.style.background = '';
+    }, 3000);
+  }
+}
+
+function cancelUpload() {
+  if (_uploadXHR) {
+    _uploadXHR.abort();
+    _uploadXHR = null;
+  }
+  document.getElementById('upload-status').textContent = '';
+  document.getElementById('upload-progress-wrap').style.display = 'none';
+  document.getElementById('upload-progress-bar').style.width = '0%';
 }
 
 
