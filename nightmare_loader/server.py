@@ -572,15 +572,10 @@ class _Handler(BaseHTTPRequestHandler):
         if not safe_name:
             safe_name = "upload" + ext
 
-        dest_dir_override = dest_dir_qp
-        if dest_dir_override:
-            # Basic validation: reject control characters and path traversal
-            if any(ord(c) < 0x20 for c in dest_dir_override):
-                self._json({"error": "dest_dir contains invalid characters"}, 400)
-                return
-            upload_dir = Path(dest_dir_override).resolve()
-        else:
-            upload_dir = Path(tempfile.gettempdir()) / "nightmare-loader-uploads"
+        upload_dir = self._resolve_upload_dir(dest_dir_qp)
+        if upload_dir is None:
+            self._json({"error": "dest_dir is outside permitted upload locations"}, 400)
+            return
 
         try:
             upload_dir.mkdir(parents=True, exist_ok=True)
@@ -588,7 +583,11 @@ class _Handler(BaseHTTPRequestHandler):
             self._json({"error": f"Cannot create upload directory: {exc}"}, 500)
             return
 
-        dest = upload_dir / safe_name
+        # Verify the final destination stays within upload_dir (no traversal via safe_name)
+        dest = (upload_dir / safe_name).resolve()
+        if upload_dir.resolve() not in dest.parents and dest != upload_dir.resolve():
+            self._json({"error": "Resolved destination escapes the upload directory"}, 400)
+            return
 
         try:
             self._stream_multipart_file_to_disk(content_type, content_length, dest)
@@ -602,7 +601,44 @@ class _Handler(BaseHTTPRequestHandler):
 
         self._json({"ok": True, "path": str(dest), "filename": safe_name})
 
-    def _parse_upload_headers(self, content_type: str, content_length: int) -> tuple[str, str]:
+    @staticmethod
+    def _resolve_upload_dir(dest_dir: str) -> Path | None:
+        """
+        Validate and resolve a user-supplied upload directory.
+
+        Permitted roots are:
+          • The system temp directory (always allowed)
+          • The current user's home directory subtree
+          • A caller-specified path that is already under one of the above
+
+        Returns the resolved :class:`~pathlib.Path`, or ``None`` when the
+        path is rejected.
+        """
+        default = Path(tempfile.gettempdir()) / "nightmare-loader-uploads"
+
+        if not dest_dir:
+            return default
+
+        # Reject control characters
+        if any(ord(c) < 0x20 for c in dest_dir):
+            return None
+
+        resolved = Path(dest_dir).resolve()
+
+        # Allowed base directories: system temp and user home subtree
+        allowed_roots = [
+            Path(tempfile.gettempdir()).resolve(),
+            Path.home().resolve(),
+        ]
+        if any(
+            resolved == root or root in resolved.parents
+            for root in allowed_roots
+        ):
+            return resolved
+
+        return None
+
+    def _parse_upload_headers(self, content_type: str, content_length: int) -> str:
         """
         Read just enough of rfile to parse the multipart part headers and
         extract the filename from the first file part.
@@ -640,16 +676,25 @@ class _Handler(BaseHTTPRequestHandler):
         self._upload_remaining = remaining
         self._upload_boundary  = boundary
 
-        # Extract filename from Content-Disposition
-        fn_m = re.search(
-            r'Content-Disposition[^\r\n]*;\s*filename\*?=["\']?([^"\'\r\n;]+)',
-            headers_text,
-            re.IGNORECASE,
-        )
-        if not fn_m:
-            raise ValueError("No filename found in multipart Content-Disposition")
-        filename = Path(fn_m.group(1).strip()).name  # strip path components
+        # Extract filename from Content-Disposition by scanning header lines.
+        # Parsing line-by-line avoids ReDoS from complex cross-field patterns.
+        filename = ""
+        for line in headers_text.splitlines():
+            if not line.lower().startswith("content-disposition"):
+                continue
+            # RFC 5987 filename*=UTF-8''<encoded> or plain filename="<value>"
+            fn_m = re.search(r'filename="([^"]*)"', line, re.IGNORECASE)
+            if not fn_m:
+                fn_m = re.search(r"filename=([^\s;\"']+)", line, re.IGNORECASE)
+            if fn_m:
+                filename = fn_m.group(1).strip()
+                break
 
+        if not filename:
+            raise ValueError("No filename found in multipart Content-Disposition")
+
+        # Strip any directory component using both POSIX and Windows separators
+        filename = filename.replace("\\", "/").split("/")[-1]
         return filename
 
     def _stream_multipart_file_to_disk(
