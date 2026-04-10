@@ -368,12 +368,15 @@
     .dl-item .dl-meta     { color: var(--muted); font-size: 0.62rem; display: flex; justify-content: space-between; }
     .dl-item .dl-err      { color: #ff5555; }
     .distro-links { display: flex; flex-wrap: wrap; gap: 5px; }
-    .distro-links a {
+    .distro-links a,
+    .distro-links button {
       font-size: 0.65rem; color: var(--green); border: 1px solid rgba(0,180,40,0.3);
       padding: 2px 7px; border-radius: 2px; text-decoration: none;
       background: rgba(0,40,10,0.35); transition: background 0.1s;
+      cursor: pointer; font-family: inherit;
     }
-    .distro-links a:hover { background: rgba(0,80,20,0.5); }
+    .distro-links a:hover,
+    .distro-links button:hover { background: rgba(0,80,20,0.5); }
 
     /* ── Taskbar (bottom) ────────────────────────────────────────────── */
     #taskbar {
@@ -1157,7 +1160,7 @@
         </div>
         <div class="field">
           <label>Save to Directory <small style="color:var(--muted)">(optional)</small></label>
-          <input type="text" id="upload-dest-dir" placeholder="Default: system temp dir" />
+          <input type="text" id="upload-dest-dir" placeholder="Default: ~/nightmare-loader/downloads" />
         </div>
         <div class="field">
           <label>Custom Menu Label <small style="color:var(--muted)">(optional)</small></label>
@@ -1390,25 +1393,29 @@
       </div>
       <div class="field">
         <label>Save to Directory</label>
-        <input type="text" id="dl-dest" placeholder="~/Downloads" />
+        <input type="text" id="dl-dest" placeholder="~/nightmare-loader/downloads" />
+      </div>
+      <div class="field">
+        <label>Target Device <small style="color:var(--muted)">(optional — auto-add to vault when done)</small></label>
+        <input type="text" id="dl-device" placeholder="/dev/sdb" />
       </div>
       <div class="btn-row">
         <button class="btn btn-green" onclick="dlStart()">⬇ Download</button>
         <button class="btn btn-ghost" onclick="dlRefresh()">⟳ Refresh</button>
       </div>
       <hr class="divider" />
-      <div style="font-size:0.67rem;color:var(--muted);margin-bottom:4px;letter-spacing:0.1em">POPULAR DISTROS — OFFICIAL DOWNLOAD PAGES</div>
+      <div style="font-size:0.67rem;color:var(--muted);margin-bottom:4px;letter-spacing:0.1em">POPULAR DISTROS — ONE-CLICK DOWNLOAD</div>
       <div class="distro-links">
-        <a href="https://ubuntu.com/download/desktop"       target="_blank">Ubuntu</a>
-        <a href="https://www.debian.org/CD/http-ftp/"       target="_blank">Debian</a>
-        <a href="https://fedoraproject.org/workstation/download" target="_blank">Fedora</a>
-        <a href="https://archlinux.org/download/"           target="_blank">Arch</a>
-        <a href="https://linuxmint.com/download.php"        target="_blank">Mint</a>
-        <a href="https://www.kali.org/get-kali/"            target="_blank">Kali</a>
-        <a href="https://manjaro.org/download/"             target="_blank">Manjaro</a>
-        <a href="https://www.opensuse.org/#Leap"            target="_blank">openSUSE</a>
-        <a href="https://tails.boum.org/install/"           target="_blank">Tails</a>
-        <a href="https://www.hirensbootcd.org/download/"    target="_blank">Hiren's PE</a>
+        <button onclick="dlQuick('https://releases.ubuntu.com/24.04/ubuntu-24.04.2-desktop-amd64.iso')">Ubuntu</button>
+        <button onclick="dlQuick('https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-12.9.0-amd64-netinst.iso')">Debian</button>
+        <button onclick="dlQuick('https://download.fedoraproject.org/pub/fedora/linux/releases/41/Workstation/x86_64/iso/Fedora-Workstation-Live-x86_64-41-1.4.iso')">Fedora</button>
+        <button onclick="dlQuick('https://mirror.rackspace.com/archlinux/iso/latest/archlinux-x86_64.iso')">Arch</button>
+        <button onclick="dlQuick('https://mirrors.edge.kernel.org/linuxmint/stable/22.1/linuxmint-22.1-cinnamon-64bit.iso')">Mint</button>
+        <button onclick="dlQuick('https://cdimage.kali.org/kali-2024.4/kali-linux-2024.4-live-amd64.iso')">Kali</button>
+        <button onclick="dlQuick('https://download.manjaro.org/kde/24.2.1/manjaro-kde-24.2.1-250215-linux612.iso')">Manjaro</button>
+        <button onclick="dlQuick('https://download.opensuse.org/distribution/leap/15.6/iso/openSUSE-Leap-15.6-NET-x86_64-Media.iso')">openSUSE</button>
+        <button onclick="dlQuick('https://mirrors.edge.kernel.org/tails/stable/tails-amd64-6.11/tails-amd64-6.11.iso')">Tails</button>
+        <button onclick="dlQuick('https://www.hirensbootcd.org/files/HBCD_PE_x64.iso')">Hiren's PE</button>
       </div>
       <hr class="divider" />
       <div style="font-size:0.67rem;color:var(--muted);margin-bottom:2px;letter-spacing:0.1em">ACTIVE DOWNLOADS</div>
@@ -2453,7 +2460,7 @@ async function uploadAndAdd() {
 
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) {
-          const pct = Math.round(e.loaded / e.total * 90); // cap at 90%: last 10% reserved for drive registration
+          const pct = Math.round(e.loaded / e.total * 90); // cap at 90%: 91–100% reserved for vault registration
           bar.style.width = pct + '%';
           const mb = (e.loaded / 1048576).toFixed(1);
           const total = (e.total / 1048576).toFixed(1);
@@ -2494,7 +2501,7 @@ async function uploadAndAdd() {
       device,
       iso_path: uploadedPath,
       label,
-      copy: false,   // skip copy: file is already in the upload temp dir, no second transfer needed
+      copy: false,   // skip copy: file is already in the persistent downloads folder, no second transfer needed
     });
     bar.style.width = '100%';
     log(res.message || 'Image added successfully.', 'ok');
@@ -2925,10 +2932,15 @@ window.addEventListener('load', () => {
 ═══════════════════════════════════════════════════════════════════ */
 (function () {
   let _dlPollTimer = null;
+  // Track { device, dest } per download ID so we can auto-add on completion
+  const _dlDevices = {};
+  // Track IDs that have already been added to the vault (prevent duplicates)
+  const _dlAdded   = new Set();
 
   window.dlStart = async function () {
     const url     = document.getElementById('dl-url').value.trim();
     const destDir = document.getElementById('dl-dest').value.trim();
+    const device  = document.getElementById('dl-device').value.trim();
     if (!url) { log('Downloader: no URL provided.', 'err'); return; }
 
     log(`━━ DOWNLOAD ${url.split('/').pop()} ━━`, 'head');
@@ -2936,6 +2948,7 @@ window.addEventListener('load', () => {
       const res = await apiPost('/api/download/start', { url, dest_dir: destDir || undefined });
       if (res.ok) {
         log(`Download started: ${res.filename} → ${res.dest}`, 'ok');
+        if (device) _dlDevices[res.id] = { device, dest: res.dest };
         document.getElementById('dl-url').value = '';
         dlRefresh();
         _startPoll();
@@ -2947,12 +2960,42 @@ window.addEventListener('load', () => {
     }
   };
 
+  // One-click quick-download from a direct URL (used by distro buttons)
+  window.dlQuick = function (url) {
+    document.getElementById('dl-url').value = url;
+    dlStart();
+  };
+
   window.dlRefresh = async function () {
     try {
       const data = await apiGet('/api/download/status');
       renderDownloads(data.downloads || []);
     } catch (e) {
       log('Download list error: ' + e.message, 'err');
+    }
+  };
+
+  // Add a completed download to the ISO Vault on the specified device
+  window.dlAddToVault = async function (id, dest) {
+    const device = document.getElementById('dl-device').value.trim();
+    if (!device) {
+      log('Add to Vault: fill in the Target Device field first.', 'err');
+      return;
+    }
+    log(`Adding ${dest.split('/').pop()} to ${device}…`, 'dim');
+    try {
+      const res = await apiPost('/api/add', { device, iso_path: dest, copy: true });
+      if (res.ok) {
+        _dlAdded.add(id);
+        log(res.message || 'Added to vault.', 'ok');
+        dlRefresh();
+        const vaultDevice = document.getElementById('vault-device').value.trim();
+        if (vaultDevice === device) loadVault();
+      } else {
+        log('Add to Vault failed: ' + (res.error || 'unknown'), 'err');
+      }
+    } catch (e) {
+      log('Add to Vault error: ' + e.message, 'err');
     }
   };
 
@@ -2970,6 +3013,7 @@ window.addEventListener('load', () => {
       const item = document.createElement('div');
       item.className = 'dl-item';
       const isRunning = d.status === 'running';
+      const isAdded   = _dlAdded.has(d.id);
       const barColor = d.status === 'error' ? '#cc0000' : d.status === 'done' ? '#00ff41' : 'var(--green)';
       const statusLabel = d.status === 'done' ? '✔ Done'
                         : d.status === 'error' ? `⚠ ${d.error}`
@@ -2985,8 +3029,16 @@ window.addEventListener('load', () => {
         (isRunning
           ? `<div style="margin-top:4px"><button class="btn btn-ghost" style="padding:2px 8px;font-size:0.6rem" onclick="dlCancel('${d.id}')">✕ Cancel</button></div>`
           : (d.status === 'done'
-              ? `<div style="margin-top:4px;font-size:0.62rem;color:var(--muted)">Saved to: ${_dlEsc(d.dest)}</div>`
+              ? `<div style="margin-top:4px;font-size:0.62rem;color:var(--muted)">Saved to: ${_dlEsc(d.dest)}</div>` +
+                (isAdded
+                  ? `<div style="margin-top:4px;font-size:0.62rem;color:var(--green)">✔ Added to vault</div>`
+                  : `<div style="margin-top:4px"><button class="btn btn-green" style="padding:2px 8px;font-size:0.6rem" data-dl-add-id="${d.id}">+ Add to Vault</button></div>`)
               : ''));
+      // Wire up the Add to Vault button after innerHTML is set (avoids escaping dest in onclick)
+      if (d.status === 'done' && !isAdded) {
+        const addBtn = item.querySelector('[data-dl-add-id]');
+        if (addBtn) addBtn.addEventListener('click', () => dlAddToVault(d.id, d.dest));
+      }
       list.appendChild(item);
     });
   }
@@ -3006,6 +3058,22 @@ window.addEventListener('load', () => {
       try {
         const data = await apiGet('/api/download/status');
         const all  = data.downloads || [];
+        // Auto-add downloads that just completed when a device was specified at start
+        all.forEach(d => {
+          if (d.status === 'done' && _dlDevices[d.id] && !_dlAdded.has(d.id)) {
+            const info = _dlDevices[d.id];
+            delete _dlDevices[d.id];
+            _dlAdded.add(d.id);
+            log(`Auto-adding ${d.filename} to ${info.device}…`, 'dim');
+            apiPost('/api/add', { device: info.device, iso_path: d.dest, copy: true })
+              .then(r => {
+                log(r.message || 'Added to vault.', 'ok');
+                const vaultDevice = document.getElementById('vault-device').value.trim();
+                if (vaultDevice === info.device) loadVault();
+              })
+              .catch(e => log('Auto-add failed: ' + e.message, 'err'));
+          }
+        });
         renderDownloads(all);
         if (all.every(d => d.status !== 'running')) {
           clearInterval(_dlPollTimer);

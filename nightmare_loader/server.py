@@ -54,6 +54,15 @@ _INDEX  = _UI_DIR / "index.html"
 DEFAULT_PORT = 8321
 
 # ---------------------------------------------------------------------------
+# Persistent downloads folder – shared by the upload and download endpoints
+# ---------------------------------------------------------------------------
+
+# All uploaded/downloaded images are saved here so they survive reboots and
+# are easy to locate.  The folder is created on first use.
+_NL_DOWNLOADS: Path = Path.home() / "nightmare-loader" / "downloads"
+
+
+# ---------------------------------------------------------------------------
 # Upload configuration
 # ---------------------------------------------------------------------------
 
@@ -511,13 +520,14 @@ class _Handler(BaseHTTPRequestHandler):
     # ── API: POST /api/upload (multipart/form-data) ───────────────────
     def _api_upload(self) -> None:
         """
-        Accept a multipart/form-data upload and save the file to a temp
-        directory (or a caller-supplied ``dest_dir``).
+        Accept a multipart/form-data upload and save the file to the
+        persistent nightmare-loader downloads directory (or a caller-supplied
+        ``dest_dir``).
 
         Query parameters
         ----------------
-        dest_dir  – absolute path to save directory (optional; defaults to a
-                    per-session temp directory under the system temp dir)
+        dest_dir  – absolute path to save directory (optional; defaults to
+                    ``~/nightmare-loader/downloads``)
 
         Form fields
         -----------
@@ -608,6 +618,7 @@ class _Handler(BaseHTTPRequestHandler):
         Validate and resolve a user-supplied upload directory.
 
         Permitted roots are:
+          • The persistent nightmare-loader downloads directory
           • The system temp directory (always allowed)
           • The current user's home directory subtree
           • A caller-specified path that is already under one of the above
@@ -615,10 +626,8 @@ class _Handler(BaseHTTPRequestHandler):
         Returns the resolved :class:`~pathlib.Path`, or ``None`` when the
         path is rejected.
         """
-        default = Path(tempfile.gettempdir()) / "nightmare-loader-uploads"
-
         if not dest_dir:
-            return default
+            return _NL_DOWNLOADS
 
         # Reject control characters
         if any(ord(c) < 0x20 for c in dest_dir):
@@ -626,8 +635,10 @@ class _Handler(BaseHTTPRequestHandler):
 
         resolved = Path(dest_dir).resolve()
 
-        # Allowed base directories: system temp and user home subtree
+        # Allowed base directories: persistent downloads folder, system temp,
+        # and the full user home subtree
         allowed_roots = [
+            _NL_DOWNLOADS.resolve(),
             Path(tempfile.gettempdir()).resolve(),
             Path.home().resolve(),
         ]
@@ -956,7 +967,7 @@ class _Handler(BaseHTTPRequestHandler):
     # ── API: POST /api/download/start ─────────────────────────────────
     def _api_download_start(self, body: dict) -> None:
         url      = body.get("url", "").strip()
-        dest_dir = body.get("dest_dir", "").strip() or str(Path.home() / "Downloads")
+        dest_dir = body.get("dest_dir", "").strip() or str(_NL_DOWNLOADS)
         filename = body.get("filename", "").strip()
 
         if not url:

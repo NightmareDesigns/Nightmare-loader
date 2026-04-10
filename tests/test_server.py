@@ -585,8 +585,8 @@ class TestApiUpload:
         assert status in (200, 400, 411)
 
     def test_upload_uses_default_temp_dir_when_no_dest(self, live_server):
-        """When no dest_dir is provided the file lands in the default temp dir."""
-        import tempfile
+        """When no dest_dir is provided the file lands in the persistent downloads folder."""
+        from nightmare_loader.server import _NL_DOWNLOADS
         status, body = _multipart_post(
             live_server + "/api/upload",
             "nodest.iso",
@@ -596,6 +596,6 @@ class TestApiUpload:
         assert body.get("ok") is True
         dest_path = Path(body["path"])
         assert dest_path.exists()
-        # Should be inside the system temp dir
-        assert str(dest_path).startswith(tempfile.gettempdir())
+        # Should be inside the persistent nightmare-loader downloads directory
+        assert dest_path.is_relative_to(_NL_DOWNLOADS)
 
