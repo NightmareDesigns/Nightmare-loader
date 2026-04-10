@@ -583,9 +583,10 @@ class _Handler(BaseHTTPRequestHandler):
             self._json({"error": f"Cannot create upload directory: {exc}"}, 500)
             return
 
-        # Verify the final destination stays within upload_dir (no traversal via safe_name)
+        # Verify the final destination stays within upload_dir (no traversal via safe_name).
+        # safe_name already has separators stripped, but an extra check is cheap.
         dest = (upload_dir / safe_name).resolve()
-        if upload_dir.resolve() not in dest.parents and dest != upload_dir.resolve():
+        if not dest.is_relative_to(upload_dir.resolve()):
             self._json({"error": "Resolved destination escapes the upload directory"}, 400)
             return
 
@@ -710,11 +711,11 @@ class _Handler(BaseHTTPRequestHandler):
         ``self._upload_preamble``, ``self._upload_remaining``, and
         ``self._upload_boundary``.
         """
-        boundary  = self._upload_boundary
-        trailer   = b"\r\n--" + boundary + b"--\r\n"
-        alt_trail = b"\r\n--" + boundary + b"--"
-        guard     = len(trailer)          # keep this many bytes in pending
-        CHUNK     = 1 << 17              # 128 KiB per read
+        boundary   = self._upload_boundary
+        trailer    = b"\r\n--" + boundary + b"--\r\n"
+        alt_trail  = b"\r\n--" + boundary + b"--"
+        guard      = len(trailer)       # keep this many bytes in pending
+        chunk_size = 1 << 17            # 128 KiB per read
 
         # pending holds the last `guard` bytes that we haven't yet written,
         # so we can detect and strip the trailing boundary.
@@ -723,7 +724,7 @@ class _Handler(BaseHTTPRequestHandler):
 
         with open(dest, "wb") as fh:
             while remaining > 0:
-                data = self.rfile.read(min(CHUNK, remaining))
+                data = self.rfile.read(min(chunk_size, remaining))
                 if not data:
                     break
                 remaining -= len(data)

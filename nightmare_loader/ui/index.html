@@ -2453,7 +2453,7 @@ async function uploadAndAdd() {
 
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) {
-          const pct = Math.round(e.loaded / e.total * 90);
+          const pct = Math.round(e.loaded / e.total * 90); // cap at 90%: last 10% reserved for drive registration
           bar.style.width = pct + '%';
           const mb = (e.loaded / 1048576).toFixed(1);
           const total = (e.total / 1048576).toFixed(1);
@@ -2494,7 +2494,7 @@ async function uploadAndAdd() {
       device,
       iso_path: uploadedPath,
       label,
-      copy: false,   // file is already at its final location
+      copy: false,   // skip copy: file is already in the upload temp dir, no second transfer needed
     });
     bar.style.width = '100%';
     log(res.message || 'Image added successfully.', 'ok');
