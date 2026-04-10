@@ -850,6 +850,34 @@
       </div>
     </div>
 
+    <!-- ┌─ BOOT FILES ───────────────────────────────────────┐ -->
+    <div class="panel col-7" id="panel-boot-files">
+      <div class="panel-title"><span class="icon">📂</span> Boot Files Directory</div>
+
+      <p style="font-size:0.72rem;color:var(--muted);margin-bottom:10px">
+        Store your ISO, WIM, and IMG files here for easy access.
+        Location: <code id="boot-files-path" style="color:var(--green);font-size:0.7rem">~/.nightmare-loader/boot-files/</code>
+      </p>
+
+      <div class="btn-row">
+        <button class="btn btn-green" onclick="refreshBootFiles()">⟳ Refresh</button>
+        <label class="btn btn-green" style="margin:0;cursor:pointer">
+          📤 Upload File
+          <input type="file" id="file-upload" accept=".iso,.wim,.img,.ISO,.WIM,.IMG" style="display:none" onchange="uploadFile()" />
+        </label>
+        <button class="btn btn-ghost" onclick="openBootFilesFolder()">📁 Open Folder</button>
+      </div>
+
+      <ul class="item-list" id="boot-files-list" style="max-height:280px;overflow-y:auto">
+        <li class="empty-msg">Loading boot files…</li>
+      </ul>
+
+      <div class="btn-row" id="boot-files-actions" style="display:none">
+        <button class="btn btn-ghost" onclick="deleteSelectedBootFile()">🗑 Delete Selected</button>
+        <button class="btn btn-green" onclick="addSelectedBootFile()">➕ Add to Drive</button>
+      </div>
+    </div>
+
     <!-- ┌─ ISO INSPECTOR ────────────────────────────────────┐ -->
     <div class="panel col-5" id="panel-inspect">
       <div class="panel-title"><span class="icon">🔬</span> ISO Inspector</div>
@@ -1545,6 +1573,157 @@ function renderInspectResult(meta) {
 
 
 /* ═══════════════════════════════════════════════════════════════════
+   BOOT FILES DIRECTORY
+═══════════════════════════════════════════════════════════════════ */
+let selectedBootFile = null;
+
+async function loadBootFilesDir() {
+  try {
+    const data = await apiGet('/api/boot-files/dir');
+    document.getElementById('boot-files-path').textContent = data.directory;
+  } catch (e) {
+    log('Failed to get boot files directory: ' + e.message, 'warn');
+  }
+}
+
+async function refreshBootFiles() {
+  const list = document.getElementById('boot-files-list');
+  list.innerHTML = '<li class="empty-msg"><span class="spin"></span> Loading…</li>';
+  document.getElementById('boot-files-actions').style.display = 'none';
+  selectedBootFile = null;
+
+  log('Loading boot files directory…', 'dim');
+
+  try {
+    const data = await apiGet('/api/boot-files');
+    const files = data.files || [];
+
+    if (files.length === 0) {
+      list.innerHTML = '<li class="empty-msg">No bootable files found. Upload some ISO, WIM, or IMG files.</li>';
+      log('Boot files directory is empty.', 'warn');
+      return;
+    }
+
+    list.innerHTML = '';
+    files.forEach(file => {
+      const mb = (file.size / 1048576).toFixed(1);
+      const li = document.createElement('li');
+      li.className = 'item-card';
+      li.dataset.filepath = file.path;
+      li.dataset.filename = file.name;
+      li.innerHTML = `
+        <div>
+          <div class="ic-name">${file.name}</div>
+          <div class="ic-meta">${mb} MB · ${file.extension.toUpperCase()}</div>
+        </div>
+        <span class="ic-badge">${file.extension.replace('.', '')}</span>`;
+      li.addEventListener('click', () => selectBootFile(file, li));
+      list.appendChild(li);
+    });
+
+    document.getElementById('boot-files-actions').style.display = '';
+    log(`Loaded ${files.length} boot file(s).`, 'ok');
+  } catch (e) {
+    list.innerHTML = '<li class="empty-msg">Error loading boot files.</li>';
+    log('Boot files load failed: ' + e.message, 'err');
+  }
+}
+
+function selectBootFile(file, el) {
+  document.querySelectorAll('#boot-files-list .item-card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedBootFile = file;
+  log(`Selected: ${file.name}`, 'dim');
+}
+
+async function uploadFile() {
+  const input = document.getElementById('file-upload');
+  const file = input.files[0];
+
+  if (!file) return;
+
+  setStatus('Uploading file…', true);
+  log(`━━ UPLOAD ${file.name} (${(file.size / 1048576).toFixed(1)} MB) ━━`, 'head');
+
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const res = await fetch('/api/upload', {
+      method: 'POST',
+      body: formData
+    });
+
+    if (!res.ok) {
+      const errData = await res.json();
+      throw new Error(errData.error || `HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    log(data.message || 'File uploaded successfully.', 'ok');
+    setStatus('READY');
+
+    // Clear the input and refresh the list
+    input.value = '';
+    refreshBootFiles();
+  } catch (e) {
+    log('Upload failed: ' + e.message, 'err');
+    setStatus('ERROR');
+    input.value = '';
+  }
+}
+
+async function deleteSelectedBootFile() {
+  if (!selectedBootFile) {
+    log('No file selected.', 'err');
+    return;
+  }
+
+  showModal(
+    '🗑 Delete File',
+    `Delete "${selectedBootFile.name}" from boot files directory?`,
+    'This will permanently remove the file from your system.',
+    () => doDeleteBootFile(selectedBootFile.name)
+  );
+}
+
+async function doDeleteBootFile(filename) {
+  setStatus('Deleting file…', true);
+  log(`━━ DELETE ${filename} ━━`, 'head');
+
+  try {
+    const res = await apiPost('/api/boot-files/delete', { filename });
+    log(res.message || 'File deleted.', 'ok');
+    setStatus('READY');
+    refreshBootFiles();
+  } catch (e) {
+    log('Delete failed: ' + e.message, 'err');
+    setStatus('ERROR');
+  }
+}
+
+function addSelectedBootFile() {
+  if (!selectedBootFile) {
+    log('No file selected.', 'err');
+    return;
+  }
+
+  // Auto-fill the Add ISO panel with the selected file path
+  document.getElementById('add-iso-path').value = selectedBootFile.path;
+  log(`File path copied to Add ISO panel: ${selectedBootFile.path}`, 'ok');
+
+  // Scroll to Add ISO panel
+  document.getElementById('panel-add').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function openBootFilesFolder() {
+  const path = document.getElementById('boot-files-path').textContent;
+  log(`Boot files directory: ${path}`, 'dim');
+  log('Open this path in your file manager to add files directly.', 'dim');
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
    GLITCH EFFECT TRIGGER
 ═══════════════════════════════════════════════════════════════════ */
 (function () {
@@ -1602,6 +1781,8 @@ window.addEventListener('load', () => {
   checkPlatform();
   checkRoot();
   refreshDrives();
+  loadBootFilesDir();
+  refreshBootFiles();
   log('Nightmare Loader UI initialised.', 'head');
 });
 </script>
