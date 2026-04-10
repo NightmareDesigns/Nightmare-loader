@@ -113,7 +113,7 @@ Plug the drive into any PC, select it in the BIOS boot menu, and choose an OS fr
 
 ## Web UI
 
-Start the web UI with `nightmare-loader ui` and open the printed URL in any browser on the same machine (or on a phone/tablet on the same network).
+Start the web UI with `nightmare-loader ui`. The printed URL opens in your local browser automatically. The server also binds to all network interfaces, so you can open the same URL from any phone, tablet, or PC on the same network using the **Network access** address printed in the terminal.
 
 The interface is a windowed desktop environment with a vertical dock on the left:
 
