@@ -568,10 +568,7 @@ grub-mkrescue \
     --fonts=unicode \
     /mnt/iso-stage \
     -- \
-    -volid 'NIGHTMARE-LIVE' \
-    -iso-level 3 \
-    -rock \
-    -joliet
+    -volid 'NIGHTMARE-LIVE'
 "
     umount "$ROOTFS/mnt/iso-stage" 2>/dev/null || true
     umount "$ROOTFS/mnt/iso-out"   2>/dev/null || true
@@ -584,10 +581,7 @@ else
         --fonts=unicode \
         "$ISO_STAGE" \
         -- \
-        -volid "NIGHTMARE-LIVE" \
-        -iso-level 3 \
-        -rock \
-        -joliet
+        -volid "NIGHTMARE-LIVE"
 
 fi
 
