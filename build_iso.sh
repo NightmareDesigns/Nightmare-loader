@@ -238,7 +238,7 @@ pip3_install() {
     # so plain `pip3 install` fails with error: externally-managed-environment.
     # Use a virtual environment to install packages without touching system Python.
     local venv=/opt/nightmare-venv
-    [ -d "$venv" ] || python3 -m venv "$venv"
+    [ -d "$venv" ] || python3 -m venv "$venv" || { echo "Error: Failed to create venv at $venv" >&2; return 1; }
     "$venv/bin/pip" install "$@"
 }
 
@@ -307,6 +307,7 @@ apt-get install -y --no-install-recommends \
 $(declare -f pip3_install)
 # Optional: install published PyPI release if available; the editable local
 # install below will always overlay (or substitute) it.
+# Allow failure if package not yet published on PyPI.
 pip3_install nightmare-loader || true
 "
 
