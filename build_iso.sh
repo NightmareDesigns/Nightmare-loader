@@ -234,9 +234,12 @@ chmod +x "$ROOTFS/usr/sbin/policy-rc.d"
 setup_mounts
 
 pip3_install() {
-    # pip3 on Debian bookworm needs --break-system-packages; older pip won't
-    # recognise the flag so fall back without it.
-    pip3 install --break-system-packages "$@" 2>/dev/null || pip3 install "$@"
+    # PEP 668 fix: Debian bookworm marks system Python as externally managed,
+    # so plain `pip3 install` fails with error: externally-managed-environment.
+    # Use a virtual environment to install packages without touching system Python.
+    local venv=/opt/nightmare-venv
+    [ -d "$venv" ] || python3 -m venv "$venv"
+    "$venv/bin/pip" install "$@"
 }
 
 if [[ $TERMUX_BUILD -eq 1 ]]; then
@@ -296,14 +299,15 @@ export DEBIAN_FRONTEND=noninteractive
 
 apt-get update -qq
 apt-get install -y --no-install-recommends \
-    python3 python3-pip \
+    python3 python3-venv \
     parted dosfstools genisoimage \
     grub-pc-bin grub-efi-amd64-bin grub-common \
     ca-certificates curl bash-completion less
 
 $(declare -f pip3_install)
-pip3_install nightmare-loader
-nightmare-loader --version
+# Optional: install published PyPI release if available; the editable local
+# install below will always overlay (or substitute) it.
+pip3_install nightmare-loader || true
 "
 
     info "Copying Nightmare Loader source into live image…"
@@ -311,6 +315,7 @@ nightmare-loader --version
     chroot "$ROOTFS" /bin/bash -c "
 $(declare -f pip3_install)
 pip3_install -e /opt/nightmare-loader
+/opt/nightmare-venv/bin/nightmare-loader --version
 "
 
 fi
