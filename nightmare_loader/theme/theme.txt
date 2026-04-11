@@ -37,8 +37,6 @@ desktop-color: "#000000"
   selected_item_color     = "#ff2222"
   item_height             = 28
   item_padding            = 6
-  menu_pixmap_style       = ""
-  selected_item_pixmap_style = ""
   scrollbar               = true
   scrollbar_thumb         = "style_highlight"
 }
