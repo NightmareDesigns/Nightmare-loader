@@ -234,9 +234,15 @@ chmod +x "$ROOTFS/usr/sbin/policy-rc.d"
 setup_mounts
 
 pip3_install() {
-    # pip3 on Debian bookworm needs --break-system-packages; older pip won't
-    # recognise the flag so fall back without it.
-    pip3 install --break-system-packages "$@" 2>/dev/null || pip3 install "$@"
+    # Debian bookworm+ enforces PEP 668 and requires --break-system-packages.
+    # Detect whether the installed pip supports the flag; if not, omit it so
+    # we don't error on older pip versions.  This avoids silently masking a
+    # real installation failure with a bad fallback.
+    if pip3 install --help 2>&1 | grep -q -- '--break-system-packages'; then
+        pip3 install --break-system-packages "$@"
+    else
+        pip3 install "$@"
+    fi
 }
 
 if [[ $TERMUX_BUILD -eq 1 ]]; then
@@ -245,6 +251,11 @@ if [[ $TERMUX_BUILD -eq 1 ]]; then
 
     # Write a resolv.conf so apk can reach the network
     cp /etc/resolv.conf "$ROOTFS/etc/resolv.conf" 2>/dev/null || true
+
+    # Copy the Nightmare Loader source into the live rootfs before the chroot
+    # so it can be installed locally (the package is not published to PyPI).
+    info "Copying Nightmare Loader source into live image…"
+    cp -a "$SCRIPT_DIR" "$ROOTFS/opt/nightmare-loader"
 
     chroot "$ROOTFS" /bin/sh -c "
 set -e
@@ -270,20 +281,16 @@ apk add --no-cache \
 # Set bash as root's login shell (welcome script needs it)
 sed -i 's|^root:x:0:0:root:/root:/bin/sh\$|root:x:0:0:root:/root:/bin/bash|' /etc/passwd
 
-# Install Nightmare Loader from PyPI
-pip3 install --break-system-packages nightmare-loader 2>/dev/null \
-    || pip3 install nightmare-loader
+# Install Nightmare Loader from the local source tree
+# (use --break-system-packages if supported, fall back for older pip)
+if pip3 install --help 2>&1 | grep -q -- '--break-system-packages'; then
+    pip3 install --break-system-packages /opt/nightmare-loader
+else
+    pip3 install /opt/nightmare-loader
+fi
 
 # Verify
 nightmare-loader --version
-"
-
-    # Install Nightmare Loader from local source tree as well
-    info "Copying Nightmare Loader source into live image…"
-    cp -a "$SCRIPT_DIR" "$ROOTFS/opt/nightmare-loader"
-    chroot "$ROOTFS" /bin/sh -c "
-pip3 install --break-system-packages -e /opt/nightmare-loader 2>/dev/null \
-    || pip3 install -e /opt/nightmare-loader
 "
 
 else
@@ -293,6 +300,11 @@ else
     cat > "$ROOTFS/etc/apt/sources.list" <<EOF
 deb $MIRROR $SUITE main contrib non-free
 EOF
+
+    # Copy the Nightmare Loader source into the live rootfs before the chroot
+    # so it can be installed locally (the package is not published to PyPI).
+    info "Copying Nightmare Loader source into live image…"
+    cp -a "$SCRIPT_DIR" "$ROOTFS/opt/nightmare-loader"
 
     chroot "$ROOTFS" /bin/bash -c "
 set -euo pipefail
@@ -308,15 +320,8 @@ apt-get install -y --no-install-recommends \
     x11-xserver-utils fonts-liberation
 
 $(declare -f pip3_install)
-pip3_install nightmare-loader
+pip3_install /opt/nightmare-loader
 nightmare-loader --version
-"
-
-    info "Copying Nightmare Loader source into live image…"
-    cp -a "$SCRIPT_DIR" "$ROOTFS/opt/nightmare-loader"
-    chroot "$ROOTFS" /bin/bash -c "
-$(declare -f pip3_install)
-pip3_install -e /opt/nightmare-loader
 "
 
 fi
@@ -605,12 +610,7 @@ if [[ $TERMUX_BUILD -eq 1 ]]; then
 grub-mkrescue \
     --output=/mnt/iso-out/${OUTPUT_BASENAME} \
     --fonts=unicode \
-    /mnt/iso-stage \
-    -- \
-    -volid 'NIGHTMARE-LIVE' \
-    -iso-level 3 \
-    -rock \
-    -joliet
+    /mnt/iso-stage
 "
     umount "$ROOTFS/mnt/iso-stage" 2>/dev/null || true
     umount "$ROOTFS/mnt/iso-out"   2>/dev/null || true
@@ -618,15 +618,12 @@ grub-mkrescue \
 else
 
     # --fonts=unicode embeds the unicode.pf2 bitmap font into the image.
+    # Do not pass extra xorriso args after '--'; different xorriso versions
+    # use incompatible command syntax for mkisofs-style flags.
     grub-mkrescue \
         --output="$OUTPUT_ISO" \
         --fonts=unicode \
-        "$ISO_STAGE" \
-        -- \
-        -volid "NIGHTMARE-LIVE" \
-        -iso-level 3 \
-        -rock \
-        -joliet
+        "$ISO_STAGE"
 
 fi
 

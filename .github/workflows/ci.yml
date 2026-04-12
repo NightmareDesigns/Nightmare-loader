@@ -217,11 +217,20 @@ jobs:
           done
           sudo umount "${MOUNT_DIR}"
 
-      - name: Upload ISO artifact
+      - name: Generate SHA256 checksum
+        run: |
+          ISO_NAME="${{ github.event.inputs.iso_output || 'nightmare-loader-live.iso' }}"
+          sha256sum "${ISO_NAME}" > "${ISO_NAME}.sha256"
+          echo "=== SHA256 checksum ==="
+          cat "${ISO_NAME}.sha256"
+
+      - name: Upload ISO + checksum artifacts
         uses: actions/upload-artifact@v4
         with:
           name: nightmare-loader-live-iso
-          path: "${{ github.event.inputs.iso_output || 'nightmare-loader-live.iso' }}"
+          path: |
+            ${{ github.event.inputs.iso_output || 'nightmare-loader-live.iso' }}
+            ${{ github.event.inputs.iso_output || 'nightmare-loader-live.iso' }}.sha256
           retention-days: 30
 
   # ── 5. QEMU boot smoke-test (runs after ISO build, same trigger) ──────────
