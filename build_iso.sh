@@ -262,6 +262,7 @@ apk add --no-cache \
     grub grub-bios grub-efi grub-efi-x86_64 \
     xorriso mtools cpio gzip \
     bash ca-certificates curl \
+    busybox-ifupdown \
     xorg-server xf86-input-libinput xf86-video-vesa xinit \
     openbox tint2 xterm chromium \
     xsetroot font-misc-misc
@@ -357,6 +358,10 @@ if [[ $TERMUX_BUILD -eq 1 ]]; then
     fi
     info "Alpine autologin configured in /etc/inittab (tty1 + ttyS0)"
 
+    # Enable the networking OpenRC service so DHCP runs on boot.
+    chroot "$ROOTFS" /bin/sh -c "rc-update add networking default 2>/dev/null || true"
+    info "Alpine networking service enabled (DHCP via /etc/network/interfaces)"
+
     # ── Configure mkinitfs for live squashfs boot ──────────────────────────
     # Create a custom feature that adds the drivers needed by
     # nightmare-live-init.sh to find and mount the live medium.
@@ -381,6 +386,24 @@ else
         "$ROOTFS/etc/systemd/system/getty.target.wants/serial-getty@ttyS0.service" \
         2>/dev/null || true
     info "Debian serial-getty@ttyS0 enabled (autologin drop-in from overlay)"
+
+    # Enable systemd-networkd for DHCP (config is in the iso_root overlay:
+    # etc/systemd/network/01-live-dhcp.network).
+    mkdir -p "$ROOTFS/etc/systemd/system/multi-user.target.wants"
+    ln -sf /lib/systemd/system/systemd-networkd.service \
+        "$ROOTFS/etc/systemd/system/multi-user.target.wants/systemd-networkd.service" \
+        2>/dev/null || true
+
+    # Enable systemd-resolved for DNS and create the /etc/resolv.conf symlink
+    # so hostname resolution works out of the box in the live session.
+    mkdir -p "$ROOTFS/etc/systemd/system/sysinit.target.wants"
+    ln -sf /lib/systemd/system/systemd-resolved.service \
+        "$ROOTFS/etc/systemd/system/sysinit.target.wants/systemd-resolved.service" \
+        2>/dev/null || true
+    ln -sf /run/systemd/resolve/stub-resolv.conf \
+        "$ROOTFS/etc/resolv.conf" 2>/dev/null || true
+
+    info "Debian systemd-networkd + systemd-resolved enabled"
 fi
 
 rm -f "$ROOTFS/usr/sbin/policy-rc.d"

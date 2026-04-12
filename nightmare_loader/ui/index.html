@@ -1543,13 +1543,17 @@
   // initial=true staggers start positions across the full canvas height.
   function makeCol(initial) {
     const len = 10 + Math.floor(Math.random() * 22); // streak length 10–31
+    const speedRoll = Math.random();
     return {
       // y is the head row (float); grows downward each tick.
       y:       initial ? Math.random() * -(canvas.height / FS + 20) : -2,
-      // Speed variants: ~10 % very slow, ~15 % fast, rest normal.
-      speed:   Math.random() < 0.10 ? (0.15 + Math.random() * 0.25)
-             : Math.random() < 0.25 ? (1.5  + Math.random() * 0.80)
-             :                         (0.4  + Math.random() * 1.00),
+      // Speed variants: ~10 % very slow / ~15 % fast / ~75 % normal.
+      // A single roll is compared against cumulative thresholds so the
+      // tier probabilities are exact rather than dependent on two independent
+      // Math.random() calls (which would skew the fast-tier to ~22.5 %).
+      speed:   speedRoll < 0.10 ? (0.15 + Math.random() * 0.25)
+             : speedRoll < 0.25 ? (1.5  + Math.random() * 0.80)
+             :                    (0.4  + Math.random() * 1.00),
       len,
       isBlood: Math.random() < BLOOD_PROB,
       // chars[0] = head character (leading edge); chars[len-1] = tail tip.
@@ -1641,8 +1645,10 @@
         if (Math.random() < MUTATE_PROB) c.chars[j] = rchar();
       }
 
-      // Reset when the tail has cleared the bottom of the screen.
-      if ((hy - c.len) * FS > canvas.height) {
+      // Reset when the tail tip has cleared the bottom of the screen.
+      // Tail tip row = hy - (c.len - 1); using (c.len - 1) not c.len avoids
+      // an off-by-one that would delay the reset by one extra character height.
+      if ((hy - (c.len - 1)) * FS > canvas.height) {
         col[i] = makeCol(false);
       }
     }
