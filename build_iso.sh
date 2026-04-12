@@ -234,9 +234,12 @@ chmod +x "$ROOTFS/usr/sbin/policy-rc.d"
 setup_mounts
 
 pip3_install() {
-    # pip3 on Debian bookworm needs --break-system-packages; older pip won't
-    # recognise the flag so fall back without it.
-    pip3 install --break-system-packages "$@" 2>/dev/null || pip3 install "$@"
+    # PEP 668 fix: Debian bookworm marks system Python as externally managed,
+    # so plain `pip3 install` fails with error: externally-managed-environment.
+    # Use a virtual environment to install packages without touching system Python.
+    local venv=/opt/nightmare-venv
+    [ -d "$venv" ] || python3 -m venv "$venv" || { echo "Error: Failed to create venv at $venv" >&2; return 1; }
+    "$venv/bin/pip" install "$@"
 }
 
 if [[ $TERMUX_BUILD -eq 1 ]]; then
@@ -296,14 +299,16 @@ export DEBIAN_FRONTEND=noninteractive
 
 apt-get update -qq
 apt-get install -y --no-install-recommends \
-    python3 python3-pip \
+    python3 python3-venv \
     parted dosfstools genisoimage \
     grub-pc-bin grub-efi-amd64-bin grub-common \
     ca-certificates curl bash-completion less
 
 $(declare -f pip3_install)
-pip3_install nightmare-loader
-nightmare-loader --version
+# Optional: install published PyPI release if available; the editable local
+# install below will always overlay (or substitute) it.
+# Allow failure if package not yet published on PyPI.
+pip3_install nightmare-loader || true
 "
 
     info "Copying Nightmare Loader source into live image…"
@@ -311,6 +316,7 @@ nightmare-loader --version
     chroot "$ROOTFS" /bin/bash -c "
 $(declare -f pip3_install)
 pip3_install -e /opt/nightmare-loader
+/opt/nightmare-venv/bin/nightmare-loader --version
 "
 
 fi
@@ -384,10 +390,16 @@ step "Stage 4/6 – Creating SquashFS and extracting kernel/initrd"
 
 mkdir -p "$ISO_STAGE/live"
 
+# Ensure the virtual-filesystem mount-point directories exist as empty
+# placeholders inside the rootfs.  live-boot bind-mounts /dev, /proc, /sys,
+# /run, and /tmp into these paths after mounting the squashfs at /root; if
+# the directories are absent the mounts fail with "mount point does not
+# exist" and the kernel panics before reaching /sbin/init.
+mkdir -p "$ROOTFS/dev" "$ROOTFS/proc" "$ROOTFS/sys" "$ROOTFS/run" "$ROOTFS/tmp"
+
 mksquashfs "$ROOTFS" "$ISO_STAGE/live/filesystem.squashfs" \
     -comp xz -noappend \
-    -e boot \
-    -e proc -e sys -e dev -e run -e tmp
+    -e boot
 
 info "Squash: $(du -sh "$ISO_STAGE/live/filesystem.squashfs" | cut -f1)"
 
@@ -562,10 +574,7 @@ grub-mkrescue \
     --fonts=unicode \
     /mnt/iso-stage \
     -- \
-    -volid 'NIGHTMARE-LIVE' \
-    -iso-level 3 \
-    -rock \
-    -joliet
+    -volid 'NIGHTMARE-LIVE'
 "
     umount "$ROOTFS/mnt/iso-stage" 2>/dev/null || true
     umount "$ROOTFS/mnt/iso-out"   2>/dev/null || true
@@ -578,10 +587,7 @@ else
         --fonts=unicode \
         "$ISO_STAGE" \
         -- \
-        -volid "NIGHTMARE-LIVE" \
-        -iso-level 3 \
-        -rock \
-        -joliet
+        -volid "NIGHTMARE-LIVE"
 
 fi
 
