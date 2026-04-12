@@ -104,11 +104,35 @@ jobs:
               || docker build --no-cache --dry-run -f Dockerfile.iso-builder . 2>/dev/null \
               || echo "Docker dry-run not supported on this runner; skipping."
 
-      - name: Verify GRUB theme is present
+      - name: Verify GRUB Nightmare theme is present and complete
         run: |
-          [[ -f nightmare_loader/theme/theme.txt ]] \
-            || { echo "GRUB theme missing!"; exit 1; }
-          echo "GRUB theme OK"
+          THEME=nightmare_loader/theme/theme.txt
+          [[ -f "$THEME" ]] || { echo "GRUB theme missing: $THEME"; exit 1; }
+          # Verify the Nightmare branding is intact (title label + dark palette)
+          grep -q 'NIGHTMARE LOADER' "$THEME" \
+            || { echo "GRUB theme missing 'NIGHTMARE LOADER' title"; exit 1; }
+          grep -q '#cc0000' "$THEME" \
+            || { echo "GRUB theme missing blood-red accent colour #cc0000"; exit 1; }
+          grep -q '#00cc00' "$THEME" \
+            || { echo "GRUB theme missing matrix-green colour #00cc00"; exit 1; }
+          echo "  ✓  GRUB Nightmare theme OK"
+
+      - name: Verify matrix rain code is present in web UI
+        run: |
+          INDEX=nightmare_loader/ui/index.html
+          [[ -f "$INDEX" ]] || { echo "Web UI index.html missing"; exit 1; }
+          # Full-streak matrix rain markers
+          grep -q 'MATRIX RAIN' "$INDEX" \
+            || { echo "Matrix rain section comment missing from $INDEX"; exit 1; }
+          grep -q 'BLOOD_PROB' "$INDEX" \
+            || { echo "BLOOD_PROB constant missing – blood-red columns removed"; exit 1; }
+          grep -q 'shadowBlur' "$INDEX" \
+            || { echo "shadowBlur glow missing – head rendering removed"; exit 1; }
+          grep -q 'requestAnimationFrame' "$INDEX" \
+            || { echo "requestAnimationFrame loop missing – matrix rain removed"; exit 1; }
+          grep -q 'speedRoll' "$INDEX" \
+            || { echo "speedRoll variable missing – speed-tier code removed"; exit 1; }
+          echo "  ✓  Matrix rain code OK"
 
       - name: Verify iso_root overlay structure
         run: |
@@ -120,8 +144,14 @@ jobs:
             iso_root/root/.config/tint2/tint2rc \
             iso_root/usr/local/bin/nightmare-live-init.sh \
             iso_root/usr/local/bin/nightmare-welcome.sh \
+            iso_root/etc/hosts \
+            iso_root/etc/fstab \
+            iso_root/etc/network/interfaces \
             iso_root/etc/systemd/system/getty@tty1.service.d/autologin.conf \
-            iso_root/etc/systemd/system/serial-getty@ttyS0.service.d/autologin.conf; do
+            iso_root/etc/systemd/system/serial-getty@ttyS0.service.d/autologin.conf \
+            iso_root/etc/systemd/network/01-live-dhcp.network \
+            iso_root/etc/systemd/system/systemd-networkd-wait-online.service.d/timeout.conf \
+            iso_root/etc/X11/xorg.conf.d/00-nightmare-live.conf; do
             [[ -f "$f" ]] || { echo "Missing overlay file: $f"; exit 1; }
             echo "  ✓  $f"
           done

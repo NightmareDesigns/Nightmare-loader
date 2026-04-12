@@ -8,11 +8,13 @@
 [ -f /etc/profile ] && . /etc/profile
 
 # Auto-start the graphical desktop on tty1 when X is available and not yet
-# running.  'exec' replaces this shell so that when the X session ends the
-# getty respawns and offers a fresh login rather than leaving a stale shell.
+# running.  The intentional absence of 'exec' means that if X fails to start
+# or the session exits cleanly, the shell falls through to the text welcome
+# banner below rather than triggering an infinite respawn loop via getty.
 if [[ "$(tty)" == /dev/tty1 ]] && [[ -z "${DISPLAY:-}" ]] && command -v startx >/dev/null 2>&1; then
-    exec startx -- :0 vt1 2>/tmp/nightmare-x-startup.log
+    startx -- :0 vt1 2>/tmp/nightmare-x-startup.log || true
 fi
 
-# Fallback for non-graphical sessions: show the text welcome banner.
+# Always show the text welcome banner – on non-graphical ttys it is the
+# primary UI; on tty1 it serves as a fallback if X failed to start.
 [ -x /usr/local/bin/nightmare-welcome.sh ] && /usr/local/bin/nightmare-welcome.sh
