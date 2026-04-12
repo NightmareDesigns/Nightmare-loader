@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  /root/.config/openbox/menu.xml
+  Nightmare Loader PE – right-click desktop context menu.
+-->
+<openbox_menu xmlns="http://openbox.org/3.4/menu"
+              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+              xsi:schemaLocation="http://openbox.org/3.4/menu
+                                  http://openbox.org/3.4/menu.xsd">
+
+  <!-- ── Root (desktop right-click) menu ───────────────────────────────── -->
+  <menu id="root-menu" label="Nightmare Loader PE">
+
+    <item label="Nightmare Loader UI">
+      <action name="Execute">
+        <command>sh -c 'for b in chromium chromium-browser google-chrome; do command -v "$b" &amp;&amp; exec "$b" --no-sandbox --app=http://127.0.0.1:8321; done; xdg-open http://127.0.0.1:8321'</command>
+      </action>
+    </item>
+
+    <item label="Terminal">
+      <action name="Execute"><command>xterm</command></action>
+    </item>
+
+    <separator />
+
+    <item label="Reboot">
+      <action name="Execute"><command>reboot</command></action>
+    </item>
+
+    <item label="Power Off">
+      <action name="Execute"><command>poweroff</command></action>
+    </item>
+
+  </menu>
+
+  <!-- ── Per-window title-bar right-click menu ─────────────────────────── -->
+  <menu id="client-menu">
+    <item label="Restore">
+      <action name="Unmaximize"/>
+    </item>
+    <item label="Move">
+      <action name="Move"/>
+    </item>
+    <item label="Resize">
+      <action name="Resize"/>
+    </item>
+    <item label="Minimize">
+      <action name="Iconify"/>
+    </item>
+    <item label="Maximize">
+      <action name="ToggleMaximize"/>
+    </item>
+    <separator />
+    <item label="Close">
+      <action name="Close"/>
+    </item>
+  </menu>
+
+  <!-- ── Middle-click desktop: list open windows ───────────────────────── -->
+  <menu id="client-list-combined-menu" label="Windows"
+        execute="obamenu --no-icons" />
+
+</openbox_menu>
