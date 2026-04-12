@@ -282,7 +282,12 @@ apk add --no-cache \
 sed -i 's|^root:x:0:0:root:/root:/bin/sh\$|root:x:0:0:root:/root:/bin/bash|' /etc/passwd
 
 # Install Nightmare Loader from the local source tree
-pip3 install --break-system-packages /opt/nightmare-loader
+# (use --break-system-packages if supported, fall back for older pip)
+if pip3 install --help 2>&1 | grep -q -- '--break-system-packages'; then
+    pip3 install --break-system-packages /opt/nightmare-loader
+else
+    pip3 install /opt/nightmare-loader
+fi
 
 # Verify
 nightmare-loader --version
