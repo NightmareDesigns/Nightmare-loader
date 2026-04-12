@@ -15,7 +15,7 @@
 
   <!-- ── Theme ──────────────────────────────────────────────────────────── -->
   <theme>
-    <name>Nightmare</name>
+    <name>Onyx</name>
     <titleLayout>NLIMC</titleLayout>
     <keepBorder>yes</keepBorder>
     <animateIconify>no</animateIconify>
