@@ -28,15 +28,30 @@ tint2 &
 nightmare-loader ui --no-browser &
 _NL_PID=$!
 
+# Ensure the background server is terminated when the X session (openbox) exits.
+trap 'kill "$_NL_PID" 2>/dev/null || true' EXIT
+
 # ── Wait for server, then open the browser ──────────────────────────────────
 (
     _PORT=8321
+    _SERVER_READY=0
     for _i in $(seq 1 40); do
         if curl -sf "http://127.0.0.1:${_PORT}/" >/dev/null 2>&1; then
+            _SERVER_READY=1
             break
         fi
         sleep 0.5
     done
+
+    if [[ "$_SERVER_READY" -ne 1 ]]; then
+        _MSG="Nightmare Loader UI did not become ready on http://127.0.0.1:${_PORT}/ after waiting."
+        printf '%s\n' "$_MSG" >> /tmp/nightmare-loader-ui.log
+        if command -v xterm >/dev/null 2>&1; then
+            xterm -T "Nightmare Loader – startup failure" \
+                  -e sh -c "printf '%s\n' \"$_MSG\"; printf 'See /tmp/nightmare-loader-ui.log\n'; printf 'Press Enter to close...\n'; read _" &
+        fi
+        exit 0
+    fi
 
     # Determine the available Chromium binary name
     _BROWSER=""
@@ -48,6 +63,8 @@ _NL_PID=$!
     done
 
     if [[ -n "$_BROWSER" ]]; then
+        # --no-sandbox is required because this live session runs as root;
+        # Chromium refuses to start with the sandbox enabled under root.
         "$_BROWSER" \
             --no-sandbox \
             --disable-infobars \
