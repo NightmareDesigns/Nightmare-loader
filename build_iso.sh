@@ -261,7 +261,10 @@ apk add --no-cache \
     parted dosfstools genisoimage \
     grub grub-bios grub-efi grub-efi-x86_64 \
     xorriso mtools cpio gzip \
-    bash ca-certificates curl
+    bash ca-certificates curl \
+    xorg-server xf86-input-libinput xf86-video-vesa xinit \
+    openbox tint2 xterm chromium \
+    xsetroot font-misc-misc
 
 # Set bash as root's login shell (welcome script needs it)
 sed -i 's|^root:x:0:0:root:/root:/bin/sh\$|root:x:0:0:root:/root:/bin/bash|' /etc/passwd
@@ -299,7 +302,9 @@ apt-get install -y --no-install-recommends \
     python3 python3-pip \
     parted dosfstools genisoimage \
     grub-pc-bin grub-efi-amd64-bin grub-common \
-    ca-certificates curl bash-completion less
+    ca-certificates curl bash-completion less \
+    xserver-xorg xinit openbox tint2 xterm chromium \
+    x11-xserver-utils fonts-liberation
 
 $(declare -f pip3_install)
 pip3_install nightmare-loader
