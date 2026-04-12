@@ -610,12 +610,7 @@ if [[ $TERMUX_BUILD -eq 1 ]]; then
 grub-mkrescue \
     --output=/mnt/iso-out/${OUTPUT_BASENAME} \
     --fonts=unicode \
-    /mnt/iso-stage \
-    -- \
-    -volid 'NIGHTMARE-LIVE' \
-    -iso-level 3 \
-    -rock \
-    -joliet
+    /mnt/iso-stage
 "
     umount "$ROOTFS/mnt/iso-stage" 2>/dev/null || true
     umount "$ROOTFS/mnt/iso-out"   2>/dev/null || true
@@ -623,15 +618,12 @@ grub-mkrescue \
 else
 
     # --fonts=unicode embeds the unicode.pf2 bitmap font into the image.
+    # Do not pass extra xorriso args after '--'; different xorriso versions
+    # use incompatible command syntax for mkisofs-style flags.
     grub-mkrescue \
         --output="$OUTPUT_ISO" \
         --fonts=unicode \
-        "$ISO_STAGE" \
-        -- \
-        -volid "NIGHTMARE-LIVE" \
-        -iso-level 3 \
-        -rock \
-        -joliet
+        "$ISO_STAGE"
 
 fi
 
