@@ -32,6 +32,7 @@ mouse_pressed_icon_asb = 100 0 -40
 
 #───────────────────────────────────────────────────────────────────────────────
 # Backgrounds (id = 1..n, referenced by panel_background_id etc.)
+# Tint2 assigns IDs sequentially: the first block is id=1, the second id=2, …
 #───────────────────────────────────────────────────────────────────────────────
 # id 1 – panel background: solid black with subtle red border
 rounded = 0

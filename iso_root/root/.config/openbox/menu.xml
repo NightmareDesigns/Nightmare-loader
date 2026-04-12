@@ -57,7 +57,6 @@
   </menu>
 
   <!-- ── Middle-click desktop: list open windows ───────────────────────── -->
-  <menu id="client-list-combined-menu" label="Windows"
-        execute="obamenu --no-icons" />
+  <menu id="client-list-combined-menu" label="Windows" />
 
 </openbox_menu>
