@@ -7,7 +7,7 @@ name = "nightmare-loader"
 version = "1.1.0"
 description = "Multi-ISO bootable USB creator supporting UEFI and legacy BIOS"
 readme = "README.md"
-license = "MIT"
+license = {text = "MIT"}
 requires-python = ">=3.9"
 dependencies = [
     "click>=8.0",
