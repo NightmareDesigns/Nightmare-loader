@@ -189,7 +189,10 @@ fi
 
 DISPLAY_ARGS=()
 if [[ $HEADLESS -eq 1 ]]; then
-    DISPLAY_ARGS=(-nographic)
+    # -display none hides the window; serial redirection is handled by SERIAL_ARGS.
+    # Do NOT use -nographic here: it also tries to redirect serial to stdio which
+    # conflicts with any explicit -serial options and causes QEMU 7+ to error.
+    DISPLAY_ARGS=(-display none)
 elif [[ $VNC -eq 1 ]]; then
     VNC_DISPLAY=$(( VNC_PORT - 5900 ))
     DISPLAY_ARGS=(-vga std -vnc ":${VNC_DISPLAY}")
@@ -224,9 +227,11 @@ echo
 if [[ $WAIT_BOOT -eq 1 ]]; then
     [[ -n "$SERIAL_LOG" ]] || SERIAL_LOG="$(mktemp /tmp/nightmare-boot-XXXXXX.log)"
 
-    # Rebuild serial args: file only (no stdio conflict in background)
+    # Rebuild serial args: file only (no stdio in a background process)
     SERIAL_ARGS=(-serial "file:${SERIAL_LOG}")
-    DISPLAY_ARGS=(-nographic -display none)
+    # -display none disables the window; -nographic must NOT be used here
+    # because QEMU 7+ rejects combining -nographic with an explicit -display flag.
+    DISPLAY_ARGS=(-display none)
 
     info "Starting QEMU in background (PID will be shown below)…"
     info "Serial log : $SERIAL_LOG"
@@ -255,8 +260,12 @@ if [[ $WAIT_BOOT -eq 1 ]]; then
         sleep 2
         ELAPSED=$(( ELAPSED + 2 ))
         if [[ -f "$SERIAL_LOG" ]]; then
-            # The welcome script prints "LIVE ENVIRONMENT" or the bash prompt
-            if grep -qE "(LIVE ENVIRONMENT|nightmare-loader-live login|#)" "$SERIAL_LOG" 2>/dev/null; then
+            # Detect successful boot via kernel/systemd messages on ttyS0.
+            # "LIVE ENVIRONMENT" appears only on tty1/tty2 (not on ttyS0).
+            # "Linux version" is printed by the kernel before any driver loads.
+            # "nightmare-loader-live login:" appears when serial getty fires.
+            # "Reached target" is a late-stage systemd milestone.
+            if grep -qE "(Linux version|nightmare-loader-live login:|Reached target (Multi-User|Graphical))" "$SERIAL_LOG" 2>/dev/null; then
                 FOUND=1
                 break
             fi
