@@ -349,7 +349,13 @@ if [[ $TERMUX_BUILD -eq 1 ]]; then
     else
         echo "tty1::respawn:/bin/login -f root" >> "$ROOTFS/etc/inittab"
     fi
-    info "Alpine autologin configured in /etc/inittab"
+    # Also autologin on ttyS0 so the QEMU smoke-test can detect boot via serial.
+    if grep -q "ttyS0" "$ROOTFS/etc/inittab" 2>/dev/null; then
+        sed -i 's|ttyS0::respawn:.*|ttyS0::respawn:/bin/login -f root|' "$ROOTFS/etc/inittab"
+    else
+        echo "ttyS0::respawn:/bin/login -f root" >> "$ROOTFS/etc/inittab"
+    fi
+    info "Alpine autologin configured in /etc/inittab (tty1 + ttyS0)"
 
     # ── Configure mkinitfs for live squashfs boot ──────────────────────────
     # Create a custom feature that adds the drivers needed by
@@ -367,7 +373,14 @@ features="base squashfs nightmare-live"
 MCONF
     info "mkinitfs configured with nightmare-live feature"
 else
-    info "Debian/systemd autologin already provided by iso_root overlay"
+    # Debian/systemd: enable serial-getty@ttyS0 so the login prompt appears on
+    # the serial console.  The autologin drop-in is already in the iso_root
+    # overlay; we just need to create the "wants" symlink to activate the unit.
+    mkdir -p "$ROOTFS/etc/systemd/system/getty.target.wants"
+    ln -sf /lib/systemd/system/serial-getty@.service \
+        "$ROOTFS/etc/systemd/system/getty.target.wants/serial-getty@ttyS0.service" \
+        2>/dev/null || true
+    info "Debian serial-getty@ttyS0 enabled (autologin drop-in from overlay)"
 fi
 
 rm -f "$ROOTFS/usr/sbin/policy-rc.d"
@@ -471,14 +484,18 @@ info "Preloader theme installed → $THEME_DEST/theme.txt"
 #            init params (standard Debian live convention).
 #   Alpine:  our custom init needs no special params; 'modules=' list ensures
 #            the squashfs and loop drivers are loaded early.
+#
+# console=ttyS0 is added to all entries so the kernel and systemd send their
+# output to the serial port.  The QEMU smoke-test (run_iso.sh --wait-boot)
+# tails a serial log file and needs this output to detect a successful boot.
 if [[ $TERMUX_BUILD -eq 1 ]]; then
-    BOOT_PARAMS="quiet modules=loop,squashfs,sd-mod,usb-storage"
-    BOOT_PARAMS_VERBOSE="modules=loop,squashfs,sd-mod,usb-storage"
-    BOOT_PARAMS_SAFE="nomodeset modules=loop,squashfs,sd-mod,usb-storage"
+    BOOT_PARAMS="quiet console=ttyS0 modules=loop,squashfs,sd-mod,usb-storage"
+    BOOT_PARAMS_VERBOSE="console=ttyS0 modules=loop,squashfs,sd-mod,usb-storage"
+    BOOT_PARAMS_SAFE="nomodeset console=ttyS0 modules=loop,squashfs,sd-mod,usb-storage"
 else
-    BOOT_PARAMS="boot=live quiet splash ---"
-    BOOT_PARAMS_VERBOSE="boot=live"
-    BOOT_PARAMS_SAFE="boot=live nomodeset"
+    BOOT_PARAMS="boot=live quiet splash console=ttyS0 ---"
+    BOOT_PARAMS_VERBOSE="boot=live console=ttyS0"
+    BOOT_PARAMS_SAFE="boot=live nomodeset console=ttyS0"
 fi
 
 mkdir -p "$ISO_STAGE/boot/grub"

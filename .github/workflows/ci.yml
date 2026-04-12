@@ -119,7 +119,9 @@ jobs:
             iso_root/root/.config/openbox/menu.xml \
             iso_root/root/.config/tint2/tint2rc \
             iso_root/usr/local/bin/nightmare-live-init.sh \
-            iso_root/usr/local/bin/nightmare-welcome.sh; do
+            iso_root/usr/local/bin/nightmare-welcome.sh \
+            iso_root/etc/systemd/system/getty@tty1.service.d/autologin.conf \
+            iso_root/etc/systemd/system/serial-getty@ttyS0.service.d/autologin.conf; do
             [[ -f "$f" ]] || { echo "Missing overlay file: $f"; exit 1; }
             echo "  ✓  $f"
           done
