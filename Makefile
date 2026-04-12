@@ -7,7 +7,7 @@
 #   make build-iso      Build the live ISO via Docker (no host root required)
 #   make run-iso        Boot the live ISO in QEMU (headless smoke-test)
 #   make checksum       Generate SHA256 checksum for the built ISO
-#   make clean          Remove build artefacts
+#   make clean          Remove build artifacts
 #   make help           Show this message
 
 .PHONY: install test lint build-iso run-iso checksum clean help
@@ -94,6 +94,7 @@ smoke-test: $(ISO_NAME)
 
 clean:
 	rm -f "$(ISO_NAME)" "$(ISO_NAME).sha256"
+	# Also remove Python package build artifacts produced by `pip install -e .` / `python -m build`
 	rm -rf dist/ build/ *.egg-info .pytest_cache/ htmlcov/ .coverage
 
 # ---------------------------------------------------------------------------
@@ -111,5 +112,5 @@ help:
 	@echo "  make run-iso     Boot live ISO in QEMU      [ISO_NAME=...] [RAM_MB=...]"
 	@echo "  make smoke-test  Headless QEMU boot test    [ISO_NAME=...] [RAM_MB=...]"
 	@echo "  make checksum    Generate SHA256 checksum for the ISO"
-	@echo "  make clean       Remove build artefacts"
+	@echo "  make clean       Remove build artifacts"
 	@echo ""
