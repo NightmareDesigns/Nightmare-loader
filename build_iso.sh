@@ -390,10 +390,16 @@ step "Stage 4/6 – Creating SquashFS and extracting kernel/initrd"
 
 mkdir -p "$ISO_STAGE/live"
 
+# Ensure the virtual-filesystem mount-point directories exist as empty
+# placeholders inside the rootfs.  live-boot bind-mounts /dev, /proc, /sys,
+# /run, and /tmp into these paths after mounting the squashfs at /root; if
+# the directories are absent the mounts fail with "mount point does not
+# exist" and the kernel panics before reaching /sbin/init.
+mkdir -p "$ROOTFS/dev" "$ROOTFS/proc" "$ROOTFS/sys" "$ROOTFS/run" "$ROOTFS/tmp"
+
 mksquashfs "$ROOTFS" "$ISO_STAGE/live/filesystem.squashfs" \
     -comp xz -noappend \
-    -e boot \
-    -e proc -e sys -e dev -e run -e tmp
+    -e boot
 
 info "Squash: $(du -sh "$ISO_STAGE/live/filesystem.squashfs" | cut -f1)"
 
