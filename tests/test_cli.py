@@ -39,7 +39,7 @@ class TestRequireRoot:
             runner = CliRunner()
             result = runner.invoke(cli, ["prepare", "/dev/sda", "--yes"])
         assert result.exit_code != 0
-        assert "tsu" in result.output or "tsu" in (result.stderr or "")
+        assert "tsu" in result.output
 
     def test_non_termux_message_mentions_sudo(self):
         """On non-Termux the error should mention sudo."""
@@ -48,8 +48,7 @@ class TestRequireRoot:
             runner = CliRunner()
             result = runner.invoke(cli, ["prepare", "/dev/sda", "--yes"])
         assert result.exit_code != 0
-        combined = result.output + (result.stderr or "")
-        assert "sudo" in combined or "root" in combined
+        assert "sudo" in result.output or "root" in result.output
 
 
 # ---------------------------------------------------------------------------
@@ -177,8 +176,7 @@ class TestListWithMountPoint:
              patch("nightmare_loader.cli._is_termux", return_value=True):
             result = runner.invoke(cli, ["list", "/dev/sda"])
         assert result.exit_code != 0
-        combined = result.output + (result.stderr or "")
-        assert "--mount-point" in combined
+        assert "--mount-point" in result.output
 
 
 class TestAddWithMountPoint:
@@ -277,8 +275,7 @@ class TestBuildIsoCommand:
              patch("os.geteuid", return_value=0):
             result = runner.invoke(cli, ["build-iso"])
         assert result.exit_code == 1
-        combined = result.output + (result.stderr or "")
-        assert "build_iso.sh" in combined
+        assert "build_iso.sh" in result.output
 
     def test_build_iso_not_supported_on_windows(self, tmp_path):
         """build-iso should print a Windows-specific error and exit 1."""
@@ -293,8 +290,7 @@ class TestBuildIsoCommand:
              patch.object(__import__("pathlib").Path, "resolve", return_value=script):
             result = runner.invoke(cli, ["build-iso"])
         assert result.exit_code == 1
-        combined = result.output + (result.stderr or "")
-        assert "Windows" in combined
+        assert "Windows" in result.output
 
     def test_build_iso_termux_non_root_uses_tsu_bash(self, tmp_path):
         """On Termux without root, tsu <bash_exe> -c must be used with full bash path."""
@@ -442,8 +438,7 @@ class TestTermuxErrorMessagesUseFullPath:
              patch("nightmare_loader.cli._termux_nl_exe",
                    return_value="/data/data/com.termux/files/usr/bin/nightmare-loader"):
             result = runner.invoke(cli, ["prepare", "/dev/sda", "--yes"])
-        combined = result.output + (result.stderr or "")
-        assert "/data/data/com.termux/files/usr/bin/nightmare-loader" in combined
+        assert "/data/data/com.termux/files/usr/bin/nightmare-loader" in result.output
 
     def test_require_root_or_mount_point_shows_full_nl_path(self, capsys):
         """_require_root_or_mount_point error on Termux should show full path."""
