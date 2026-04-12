@@ -4,11 +4,11 @@ name: Build ISO
 # Complements ci.yml (which handles Python tests, wheel, and script linting).
 #
 # Trigger matrix:
-#   push to main       → full ISO build + SHA256 (Docker) + artifact upload
-#   v* tag             → full ISO build + SHA256 + smoke-test + artifact upload
-#   pull_request       → ISO script lint + overlay structure validation only
-#   schedule (nightly) → full ISO build + SHA256 + smoke-test + artifact upload
-#   workflow_dispatch  → full ISO build + SHA256 + optional smoke-test
+#   push to main       → lint + full ISO build + SHA256 (Docker) + artifact upload
+#   v* tag             → lint + full ISO build + SHA256 + smoke-test + artifact upload
+#   pull_request       → lint + full ISO build + SHA256 + artifact upload (no smoke-test)
+#   schedule (nightly) → lint + full ISO build + SHA256 + smoke-test + artifact upload
+#   workflow_dispatch  → lint + full ISO build + SHA256 + optional smoke-test
 
 on:
   push:
@@ -99,9 +99,8 @@ jobs:
     name: Build live ISO
     runs-on: ubuntu-latest
     needs: lint-iso
-    # Skip full build on PR (lint-only for fast feedback); run everywhere else.
-    if: |
-      github.event_name != 'pull_request'
+    # Build ISO on all events (including PRs) to ensure it works
+    # PRs need to verify the ISO actually builds, not just lint
     outputs:
       iso_name: ${{ steps.set-name.outputs.iso_name }}
     steps:
