@@ -164,6 +164,7 @@ class TestGenerateGrubCfg:
         cfg = generate_grub_cfg([])
         assert "if loadfont" in cfg
         assert "terminal_output gfxterm" in cfg
+        assert "terminal_output console" in cfg
 
     def test_ubuntu_entry_present(self):
         cfg = generate_grub_cfg([self._ubuntu_entry()])
