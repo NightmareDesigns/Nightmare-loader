@@ -601,12 +601,8 @@ if [[ $TERMUX_BUILD -eq 1 ]]; then
 grub-mkrescue \
     --output=/mnt/iso-out/${OUTPUT_BASENAME} \
     --fonts=unicode \
-    /mnt/iso-stage \
-    -- \
-    -volid 'NIGHTMARE-LIVE' \
-    -iso-level 3 \
-    -rock \
-    -joliet
+    --volid='NIGHTMARE-LIVE' \
+    /mnt/iso-stage
 "
     umount "$ROOTFS/mnt/iso-stage" 2>/dev/null || true
     umount "$ROOTFS/mnt/iso-out"   2>/dev/null || true
@@ -617,12 +613,8 @@ else
     grub-mkrescue \
         --output="$OUTPUT_ISO" \
         --fonts=unicode \
-        "$ISO_STAGE" \
-        -- \
-        -volid "NIGHTMARE-LIVE" \
-        -iso-level 3 \
-        -rock \
-        -joliet
+        --volid="NIGHTMARE-LIVE" \
+        "$ISO_STAGE"
 
 fi
 
