@@ -234,9 +234,14 @@ chmod +x "$ROOTFS/usr/sbin/policy-rc.d"
 setup_mounts
 
 pip3_install() {
-    # pip3 on Debian bookworm needs --break-system-packages; older pip won't
-    # recognise the flag so fall back without it.
-    pip3 install --break-system-packages "$@" 2>/dev/null || pip3 install "$@"
+    # pip3 on Debian bookworm (pip >= 22.3) and Alpine 3.20+ requires
+    # --break-system-packages to install into the system Python.
+    # Older pip won't recognise the flag, so detect support first.
+    if pip3 install --help 2>/dev/null | grep -q -- '--break-system-packages'; then
+        pip3 install --break-system-packages "$@"
+    else
+        pip3 install "$@"
+    fi
 }
 
 if [[ $TERMUX_BUILD -eq 1 ]]; then
@@ -269,21 +274,15 @@ apk add --no-cache \
 
 # Set bash as root's login shell (welcome script needs it)
 sed -i 's|^root:x:0:0:root:/root:/bin/sh\$|root:x:0:0:root:/root:/bin/bash|' /etc/passwd
-
-# Install Nightmare Loader from PyPI
-pip3 install --break-system-packages nightmare-loader 2>/dev/null \
-    || pip3 install nightmare-loader
-
-# Verify
-nightmare-loader --version
 "
 
-    # Install Nightmare Loader from local source tree as well
+    # Install Nightmare Loader from local source tree
     info "Copying Nightmare Loader source into live image…"
     cp -a "$SCRIPT_DIR" "$ROOTFS/opt/nightmare-loader"
     chroot "$ROOTFS" /bin/sh -c "
-pip3 install --break-system-packages -e /opt/nightmare-loader 2>/dev/null \
-    || pip3 install -e /opt/nightmare-loader
+$(declare -f pip3_install)
+pip3_install -e /opt/nightmare-loader
+nightmare-loader --version
 "
 
 else
@@ -306,10 +305,6 @@ apt-get install -y --no-install-recommends \
     ca-certificates curl bash-completion less \
     xserver-xorg xinit openbox tint2 xterm chromium \
     x11-xserver-utils fonts-liberation
-
-$(declare -f pip3_install)
-pip3_install nightmare-loader
-nightmare-loader --version
 "
 
     info "Copying Nightmare Loader source into live image…"
@@ -317,6 +312,7 @@ nightmare-loader --version
     chroot "$ROOTFS" /bin/bash -c "
 $(declare -f pip3_install)
 pip3_install -e /opt/nightmare-loader
+nightmare-loader --version
 "
 
 fi
