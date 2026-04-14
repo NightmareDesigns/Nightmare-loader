@@ -36,20 +36,19 @@ class TestRequireRoot:
         """On Termux the error should suggest tsu, not sudo."""
         with patch("os.geteuid", return_value=1000), \
              patch("nightmare_loader.cli._is_termux", return_value=True):
-            runner = CliRunner(mix_stderr=False)
+            runner = CliRunner()
             result = runner.invoke(cli, ["prepare", "/dev/sda", "--yes"])
         assert result.exit_code != 0
-        assert "tsu" in result.output or "tsu" in (result.stderr or "")
+        assert "tsu" in result.output
 
     def test_non_termux_message_mentions_sudo(self):
         """On non-Termux the error should mention sudo."""
         with patch("os.geteuid", return_value=1000), \
              patch("nightmare_loader.cli._is_termux", return_value=False):
-            runner = CliRunner(mix_stderr=False)
+            runner = CliRunner()
             result = runner.invoke(cli, ["prepare", "/dev/sda", "--yes"])
         assert result.exit_code != 0
-        combined = result.output + (result.stderr or "")
-        assert "sudo" in combined or "root" in combined
+        assert "sudo" in result.output or "root" in result.output
 
 
 # ---------------------------------------------------------------------------
@@ -165,20 +164,19 @@ class TestListWithMountPoint:
         assert "ubuntu.iso" in result.output
 
     def test_list_no_root_no_mount_point_fails(self):
-        runner = CliRunner(mix_stderr=False)
+        runner = CliRunner()
         with patch("os.geteuid", return_value=1000), \
              patch("nightmare_loader.cli._is_termux", return_value=False):
             result = runner.invoke(cli, ["list", "/dev/sda"])
         assert result.exit_code != 0
 
     def test_list_termux_no_root_no_mount_point_suggests_mount_point(self):
-        runner = CliRunner(mix_stderr=False)
+        runner = CliRunner()
         with patch("os.geteuid", return_value=1000), \
              patch("nightmare_loader.cli._is_termux", return_value=True):
             result = runner.invoke(cli, ["list", "/dev/sda"])
         assert result.exit_code != 0
-        combined = result.output + (result.stderr or "")
-        assert "--mount-point" in combined
+        assert "--mount-point" in result.output
 
 
 class TestAddWithMountPoint:
@@ -272,13 +270,12 @@ class TestBuildIsoCommand:
 
     def test_build_iso_missing_script_shows_error(self, tmp_path):
         """When build_iso.sh cannot be located, exit 1 with a helpful error message."""
-        runner = CliRunner(mix_stderr=False)
+        runner = CliRunner()
         with patch.object(__import__("pathlib").Path, "is_file", return_value=False), \
              patch("os.geteuid", return_value=0):
             result = runner.invoke(cli, ["build-iso"])
         assert result.exit_code == 1
-        combined = result.output + (result.stderr or "")
-        assert "build_iso.sh" in combined
+        assert "build_iso.sh" in result.output
 
     def test_build_iso_not_supported_on_windows(self, tmp_path):
         """build-iso should print a Windows-specific error and exit 1."""
@@ -286,15 +283,14 @@ class TestBuildIsoCommand:
         script.write_text("#!/usr/bin/env bash\n")
         script.chmod(0o755)
 
-        runner = CliRunner(mix_stderr=False)
+        runner = CliRunner()
         with patch("sys.platform", "win32"), \
              patch("os.geteuid", return_value=0), \
              patch.object(__import__("pathlib").Path, "is_file", return_value=True), \
              patch.object(__import__("pathlib").Path, "resolve", return_value=script):
             result = runner.invoke(cli, ["build-iso"])
         assert result.exit_code == 1
-        combined = result.output + (result.stderr or "")
-        assert "Windows" in combined
+        assert "Windows" in result.output
 
     def test_build_iso_termux_non_root_uses_tsu_bash(self, tmp_path):
         """On Termux without root, tsu <bash_exe> -c must be used with full bash path."""
@@ -436,14 +432,13 @@ class TestTermuxErrorMessagesUseFullPath:
 
     def test_require_root_shows_full_nl_path(self):
         """_require_root error on Termux should show full path to nightmare-loader."""
-        runner = CliRunner(mix_stderr=False)
+        runner = CliRunner()
         with patch("os.geteuid", return_value=1000), \
              patch("nightmare_loader.cli._is_termux", return_value=True), \
              patch("nightmare_loader.cli._termux_nl_exe",
                    return_value="/data/data/com.termux/files/usr/bin/nightmare-loader"):
             result = runner.invoke(cli, ["prepare", "/dev/sda", "--yes"])
-        combined = result.output + (result.stderr or "")
-        assert "/data/data/com.termux/files/usr/bin/nightmare-loader" in combined
+        assert "/data/data/com.termux/files/usr/bin/nightmare-loader" in result.output
 
     def test_require_root_or_mount_point_shows_full_nl_path(self, capsys):
         """_require_root_or_mount_point error on Termux should show full path."""

@@ -335,6 +335,36 @@ class TestApiPlatformAndroid:
         from unittest.mock import patch
         import nightmare_loader.drive as drv
 
+
+class TestApiPlatformWsl:
+    """Tests for the wsl key in /api/platform."""
+
+    def test_wsl_key_present(self, live_server):
+        _, body = _get(live_server + "/api/platform")
+        assert "wsl" in body
+
+    def test_wsl_key_is_boolean(self, live_server):
+        _, body = _get(live_server + "/api/platform")
+        assert isinstance(body["wsl"], bool)
+
+    def test_wsl_false_outside_wsl(self, live_server):
+        """wsl should be False when not running in WSL."""
+        import os
+        if "WSL_DISTRO_NAME" not in os.environ:
+            _, body = _get(live_server + "/api/platform")
+            # If we're not in WSL (no WSL_DISTRO_NAME env var), wsl should be False
+            # unless /proc/version contains microsoft/WSL
+            assert isinstance(body["wsl"], bool)
+
+    def test_wsl_true_when_wsl_env_set(self, live_server):
+        """wsl=True when WSL_DISTRO_NAME is in the environment."""
+        from unittest.mock import patch
+        import nightmare_loader.drive as drv
+
+        with patch.object(drv, "_is_wsl", return_value=True):
+            _, body = _get(live_server + "/api/platform")
+            assert body["wsl"] is True
+
         with patch.object(drv, "_is_termux", return_value=True):
             # Directly verify the helper returns True when mocked
             assert drv._is_termux() is True

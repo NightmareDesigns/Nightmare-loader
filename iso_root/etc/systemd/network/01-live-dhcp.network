@@ -1,0 +1,11 @@
+# /etc/systemd/network/01-live-dhcp.network
+# Automatically request DHCP on all wired Ethernet interfaces in the
+# Nightmare Loader live environment.  Applied on both QEMU virtio-net
+# (eth0, enp0s3) and real physical hardware (en*, em*).
+
+[Match]
+Name=eth* en* em*
+
+[Network]
+DHCP=yes
+IPv6AcceptRA=yes

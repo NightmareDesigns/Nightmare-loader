@@ -1,0 +1,21 @@
+# /etc/network/interfaces – Nightmare Loader live environment
+# Used by Alpine (OpenRC + busybox-ifupdown) for automatic DHCP on common
+# Ethernet interface names.  On the Debian path systemd-networkd takes over
+# using the companion 01-live-dhcp.network file instead.
+
+auto lo
+iface lo inet loopback
+
+# QEMU virtio-net (most common in QEMU/KVM)
+allow-hotplug eth0
+iface eth0 inet dhcp
+
+allow-hotplug eth1
+iface eth1 inet dhcp
+
+# Predictable names (QEMU virtio/e1000, VMware vmxnet3 → commonly ens3/enp0s3)
+allow-hotplug ens3
+iface ens3 inet dhcp
+
+allow-hotplug enp0s3
+iface enp0s3 inet dhcp

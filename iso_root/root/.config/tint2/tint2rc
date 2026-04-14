@@ -1,0 +1,137 @@
+# /root/.config/tint2/tint2rc
+# Nightmare Loader PE – taskbar / panel configuration.
+#
+# Produces a slim (28 px) panel docked to the bottom of the screen styled
+# in the Nightmare Loader theme: black background, green text, red accents.
+# Shows:  [clock]  [window list / taskbar]  [system tray]
+
+#───────────────────────────────────────────────────────────────────────────────
+# Global panel settings
+#───────────────────────────────────────────────────────────────────────────────
+panel_items = TSC
+panel_size = 100% 28
+panel_margin = 0 0
+panel_padding = 2 2 2
+panel_background_id = 1
+wm_menu = 0
+panel_dock = 0
+panel_position = bottom center horizontal
+panel_layer = top
+panel_monitor = all
+autohide = 0
+autohide_show_timeout = 0.3
+autohide_hide_timeout = 2
+autohide_height = 2
+strut_policy = follow_size
+panel_window_name = tint2
+disable_transparency = 0
+mouse_effects = 1
+font_shadow = 0
+mouse_hover_icon_asb = 100 0 10
+mouse_pressed_icon_asb = 100 0 -40
+
+#───────────────────────────────────────────────────────────────────────────────
+# Backgrounds (id = 1..n, referenced by panel_background_id etc.)
+# Tint2 assigns IDs sequentially: the first block is id=1, the second id=2, …
+#───────────────────────────────────────────────────────────────────────────────
+# id 1 – panel background: solid black with subtle red border
+rounded = 0
+border_width = 1
+background_color = #000000 100
+border_color = #8b0000 60
+
+# id 2 – task button normal
+rounded = 2
+border_width = 1
+background_color = #0a0000 80
+border_color = #3a0000 60
+
+# id 3 – task button active / focused
+rounded = 2
+border_width = 1
+background_color = #1a0000 90
+border_color = #cc0000 80
+
+# id 4 – clock / system tray background
+rounded = 2
+border_width = 0
+background_color = #000000 0
+border_color = #000000 0
+
+#───────────────────────────────────────────────────────────────────────────────
+# Taskbar (window list)
+#───────────────────────────────────────────────────────────────────────────────
+taskbar_mode = single_desktop
+taskbar_padding = 0 0 2
+taskbar_background_id = 0
+taskbar_active_background_id = 0
+taskbar_name = 0
+taskbar_hide_inactive_tasks = 0
+taskbar_hide_different_monitor = 0
+taskbar_hide_different_desktop = 0
+taskbar_always_show_all_desktop_tasks = 0
+taskbar_sort_order = none
+task_align = left
+
+#───────────────────────────────────────────────────────────────────────────────
+# Task buttons
+#───────────────────────────────────────────────────────────────────────────────
+task_text = 1
+task_icon = 1
+task_centered = 1
+urgent_nb_of_blink = 8
+task_maximum_size = 200 24
+task_padding = 4 2 4
+task_font = monospace 9
+task_font_color = #00cc33 85
+task_active_font_color = #00ff41 100
+task_urgent_font_color = #ff3300 100
+task_iconified_font_color = #3a5c41 80
+task_background_id = 2
+task_active_background_id = 3
+task_urgent_background_id = 3
+task_iconified_background_id = 2
+mouse_left = toggle_iconify
+mouse_middle = close
+mouse_right = none
+mouse_scroll_up = toggle_iconify
+mouse_scroll_down = toggle_iconify
+
+#───────────────────────────────────────────────────────────────────────────────
+# System tray
+#───────────────────────────────────────────────────────────────────────────────
+systray_padding = 0 4 4
+systray_background_id = 4
+systray_sort = ascending
+systray_icon_size = 16
+systray_icon_asb = 100 0 0
+systray_monitor = primary
+systray_name_filter =
+
+#───────────────────────────────────────────────────────────────────────────────
+# Clock
+#───────────────────────────────────────────────────────────────────────────────
+time1_format = %H:%M
+time2_format = %Y-%m-%d
+time1_font = monospace bold 10
+time2_font = monospace 8
+clock_font_color = #00ff41 100
+clock_padding = 6 2
+clock_background_id = 4
+clock_tooltip = Nightmare Loader PE
+clock_lclick_command =
+clock_rclick_command =
+clock_mclick_command =
+clock_uwheel_command =
+clock_dwheel_command =
+
+#───────────────────────────────────────────────────────────────────────────────
+# Tooltip
+#───────────────────────────────────────────────────────────────────────────────
+tooltip = 1
+tooltip_padding = 4 4
+tooltip_show_timeout = 0.7
+tooltip_hide_timeout = 0.3
+tooltip_background_id = 1
+tooltip_font_color = #00ff41 100
+tooltip_font = monospace 8

@@ -1517,81 +1517,144 @@
 <script>
 /* ═══════════════════════════════════════════════════════════════════
    MATRIX RAIN  (green + blood-red columns)
+   Full-streak rendering: each tick draws the complete head-to-tail
+   streak explicitly so brightness/colour fall-off is always precise.
+   requestAnimationFrame + delta-time throttle keeps the loop at the
+   classic ~20 fps cadence while staying in sync with the display.
 ═══════════════════════════════════════════════════════════════════ */
 (function () {
+  'use strict';
   const canvas = document.getElementById('matrix-canvas');
-  const ctx = canvas.getContext('2d');
+  const ctx    = canvas.getContext('2d');
 
-  // Katakana + ASCII + horror glyphs
+  // Katakana + ASCII printable + horror glyphs
   const CHARS =
     'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン' +
     'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*<>?/\\|☠†‡⚰⚡▓▒░';
 
-  const FONT_SIZE = 14;
-  let cols, drops, speeds, bright, blood;
+  const FS           = 14;    // font-cell size (px)
+  const STEP_MS      = 50;    // animation tick interval → ~20 fps classic feel
+  const BLOOD_PROB   = 0.12;  // fraction of columns that are blood-red
+  const MUTATE_PROB  = 0.035; // probability a body character mutates per tick
+
+  function rchar() { return CHARS[Math.floor(Math.random() * CHARS.length)]; }
+
+  // Create a fresh column state.
+  // initial=true staggers start positions across the full canvas height.
+  function makeCol(initial) {
+    const len = 10 + Math.floor(Math.random() * 22); // streak length 10–31
+    const speedRoll = Math.random();
+    return {
+      // y is the head row (float); grows downward each tick.
+      y:       initial ? Math.random() * -(canvas.height / FS + 20) : -2,
+      // Speed variants: ~10 % very slow / ~15 % fast / ~75 % normal.
+      // A single roll is compared against cumulative thresholds so the
+      // tier probabilities are exact rather than dependent on two independent
+      // Math.random() calls (which would skew the fast-tier to ~22.5 %).
+      speed:   speedRoll < 0.10 ? (0.15 + Math.random() * 0.25)
+             : speedRoll < 0.25 ? (1.5  + Math.random() * 0.80)
+             :                    (0.4  + Math.random() * 1.00),
+      len,
+      isBlood: Math.random() < BLOOD_PROB,
+      // chars[0] = head character (leading edge); chars[len-1] = tail tip.
+      chars:   Array.from({ length: len }, rchar),
+    };
+  }
+
+  let cols = 0;
+  let col  = [];
 
   function resize() {
     canvas.width  = window.innerWidth;
     canvas.height = window.innerHeight;
-    cols   = Math.floor(canvas.width / FONT_SIZE);
-    drops  = Array.from({ length: cols }, () => Math.random() * -canvas.height / FONT_SIZE);
-    speeds = Array.from({ length: cols }, () => 0.4 + Math.random() * 1.2);
-    bright = Array.from({ length: cols }, () => Math.random() > 0.92);
-    blood  = Array.from({ length: cols }, () => Math.random() > 0.87);
+    const n = Math.floor(canvas.width / FS);
+    if (n !== cols) {
+      cols = n;
+      col  = Array.from({ length: cols }, () => makeCol(true));
+    }
+    ctx.textBaseline = 'top';
+    ctx.font = `bold ${FS}px 'Courier New', monospace`;
   }
 
   resize();
   window.addEventListener('resize', resize);
 
-  function draw() {
-    // Faint black overlay → trail effect
-    ctx.fillStyle = 'rgba(0,0,0,0.055)';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  let lastT = 0;
 
-    ctx.font = `${FONT_SIZE}px 'Courier New', monospace`;
+  function frame(t) {
+    requestAnimationFrame(frame);
+    if (t - lastT < STEP_MS) return;
+    lastT = t;
+
+    // Clear to transparent — body background (#000) shows through.
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // font may have been reset externally; re-assert each tick.
+    ctx.font = `bold ${FS}px 'Courier New', monospace`;
 
     for (let i = 0; i < cols; i++) {
-      const y  = Math.floor(drops[i]) * FONT_SIZE;
-      const ch = CHARS[Math.floor(Math.random() * CHARS.length)];
+      const c  = col[i];
+      const hx = i * FS;
+      const hy = Math.floor(c.y); // head row (integer)
 
-      if (blood[i]) {
-        // Blood-red column
-        if (bright[i]) {
-          ctx.fillStyle  = '#ffbbbb';
-          ctx.shadowColor = '#ff0000';
-          ctx.shadowBlur  = 10;
+      // ── Draw full streak: j=0 (head) → j=len-1 (tail) ──────────────
+      for (let j = 0; j < c.len; j++) {
+        const row = hy - j; // row 0 = top of screen
+        if (row < 0) continue;
+        const py = row * FS;
+        if (py >= canvas.height) continue;
+
+        if (j === 0) {
+          // Leading character: near-white with colour glow.
+          if (c.isBlood) {
+            ctx.fillStyle   = '#ffe0e0';
+            ctx.shadowColor = '#ff2200';
+            ctx.shadowBlur  = 16;
+          } else {
+            ctx.fillStyle   = '#eaffea';
+            ctx.shadowColor = '#00ff41';
+            ctx.shadowBlur  = 18;
+          }
         } else {
-          const v = 0.4 + 0.6 * Math.random();
-          ctx.fillStyle = `rgba(${Math.floor(140 + 90 * v)},0,0,${v})`;
+          // Body / tail: linear brightness + slight random flicker.
           ctx.shadowBlur = 0;
+          const frac  = j / (c.len - 1);          // 0 = just behind head, 1 = tail tip
+          const noise = 0.82 + 0.18 * Math.random();
+          const alpha = (1 - frac) * noise;
+
+          if (c.isBlood) {
+            const r = Math.floor(220 - frac * 150);
+            const g = Math.floor(18  * (1 - frac));
+            ctx.fillStyle = `rgba(${r},${g},0,${alpha.toFixed(2)})`;
+          } else {
+            // Bright green near head fading to near-black at tail.
+            const g  = Math.floor(255 - frac * 195);  // 255 → 60
+            const rb = Math.floor(g * 0.06);           // tiny warm tint
+            ctx.fillStyle = `rgba(${rb},${g},${rb},${alpha.toFixed(2)})`;
+          }
         }
-      } else if (bright[i]) {
-        // Leading green character: white-green
-        ctx.fillStyle  = '#ccffcc';
-        ctx.shadowColor = '#00ff41';
-        ctx.shadowBlur  = 8;
-      } else {
-        // Column body: varying green shades
-        const intensity = 0.5 + 0.5 * Math.random();
-        ctx.fillStyle = `rgba(0,${Math.floor(180 + 75 * intensity)},${Math.floor(40 * intensity)},${intensity})`;
-        ctx.shadowBlur = 0;
+
+        ctx.fillText(c.chars[j], hx, py);
+        if (j === 0) ctx.shadowBlur = 0;
       }
 
-      ctx.fillText(ch, i * FONT_SIZE, y);
-      ctx.shadowBlur = 0;
+      // ── Advance head and mutate characters ──────────────────────────
+      c.y += c.speed;
+      c.chars[0] = rchar(); // head always shows a new random character
+      for (let j = 1; j < c.len; j++) {
+        if (Math.random() < MUTATE_PROB) c.chars[j] = rchar();
+      }
 
-      drops[i] += speeds[i];
-
-      if (y > canvas.height && Math.random() > 0.975) {
-        drops[i]  = Math.random() * -20;
-        speeds[i] = 0.4 + Math.random() * 1.2;
-        bright[i] = Math.random() > 0.92;
-        blood[i]  = Math.random() > 0.87;
+      // Reset when the tail tip has cleared the bottom of the screen.
+      // Tail tip row = hy - (c.len - 1); using (c.len - 1) not c.len avoids
+      // an off-by-one that would delay the reset by one extra character height.
+      if ((hy - (c.len - 1)) * FS > canvas.height) {
+        col[i] = makeCol(false);
       }
     }
   }
 
-  setInterval(draw, 40);
+  requestAnimationFrame(frame);
 })();
 
 
@@ -2199,6 +2262,9 @@ async function checkPlatform() {
       // On Android, privilege warning is less actionable – hide it
       document.getElementById('priv-banner').style.display = 'none';
       log('Running on Android/Termux — disk partitioning requires root + Termux packages.', 'warn');
+    } else if (data.wsl) {
+      // WSL detected - show info banner
+      log('Running on WSL (Windows Subsystem for Linux) — full USB access may require USB/IP configuration.', 'info');
     } else if (data.windows) {
       document.getElementById('win-banner').style.display = 'block';
       // Hide the Linux-specific priv banner on Windows – UAC handles elevation

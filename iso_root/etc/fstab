@@ -1,0 +1,6 @@
+# /etc/fstab – Nightmare Loader live environment
+# This is a fully in-memory live system.  All storage is handled at boot time
+# by live-boot (Debian) or nightmare-live-init.sh (Alpine).  No persistent
+# mounts are needed; this file exists only to prevent systemd from entering
+# degraded mode due to a missing fstab.
+proc  /proc  proc  defaults  0  0

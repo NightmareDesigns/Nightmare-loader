@@ -1,0 +1,280 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+    tags:     ["v*"]
+  pull_request:
+    branches: ["**"]
+  # Allow a full ISO build + boot smoke-test to be triggered manually
+  workflow_dispatch:
+    inputs:
+      run_iso_build:
+        description: "Build the live ISO and run a QEMU boot smoke-test"
+        type: boolean
+        default: false
+      iso_output:
+        description: "Filename for the built ISO artifact"
+        type: string
+        default: "nightmare-loader-live.iso"
+
+# Cancel in-progress runs on the same branch/PR when a newer commit arrives.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Default to read-only token for all jobs; jobs that need more specify it explicitly.
+permissions:
+  contents: read
+
+jobs:
+  # ── 1. Python unit tests ───────────────────────────────────────────────────
+  test:
+    name: "Python tests (3.${{ matrix.python-minor }})"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-minor: ["9", "10", "11", "12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.${{ matrix.python-minor }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.${{ matrix.python-minor }}"
+          cache: pip
+
+      - name: Create virtual environment
+        run: |
+          python -m venv .venv
+          echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
+
+      - name: Install package + dev dependencies
+        run: |
+          pip install -U pip
+          pip install -e ".[dev]"
+
+      - name: Run pytest
+        run: python -m pytest tests/ -v --tb=short --cov=nightmare_loader --cov-report=term-missing
+
+  # ── 2. Build the Python wheel ─────────────────────────────────────────────
+  build-wheel:
+    name: Build wheel
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Create virtual environment
+        run: |
+          python -m venv .venv
+          echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
+
+      - name: Install build frontend
+        run: pip install -U pip build
+
+      - name: Build wheel
+        # Run with full isolation so build automatically installs the
+        # build-system.requires (setuptools>=61, wheel) declared in
+        # pyproject.toml into a clean venv before compiling the wheel.
+        run: python -m build --wheel
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel
+          path: dist/*.whl
+          retention-days: 7
+
+  # ── 3. Validate ISO build scripts (fast, no actual build) ─────────────────
+  lint-iso-scripts:
+    name: Lint ISO build scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check bash syntax – build_iso.sh
+        run: bash -n build_iso.sh
+
+      - name: Check bash syntax – run_iso.sh
+        run: bash -n run_iso.sh
+
+      - name: Check bash syntax – iso_root scripts
+        run: |
+          for f in iso_root/usr/local/bin/*.sh iso_root/root/.xinitrc iso_root/root/.bash_profile; do
+            [[ -f "$f" ]] || continue
+            echo "→ $f"
+            bash -n "$f"
+          done
+
+      - name: Validate Dockerfile syntax
+        run: docker build --check -f Dockerfile.iso-builder . 2>/dev/null \
+              || docker build --no-cache --dry-run -f Dockerfile.iso-builder . 2>/dev/null \
+              || echo "Docker dry-run not supported on this runner; skipping."
+
+      - name: Verify GRUB Nightmare theme is present and complete
+        run: |
+          THEME=nightmare_loader/theme/theme.txt
+          [[ -f "$THEME" ]] || { echo "GRUB theme missing: $THEME"; exit 1; }
+          # Verify the Nightmare branding is intact (title label + dark palette)
+          grep -q 'NIGHTMARE LOADER' "$THEME" \
+            || { echo "GRUB theme missing 'NIGHTMARE LOADER' title"; exit 1; }
+          grep -q '#cc0000' "$THEME" \
+            || { echo "GRUB theme missing blood-red accent colour #cc0000"; exit 1; }
+          grep -q '#00cc00' "$THEME" \
+            || { echo "GRUB theme missing matrix-green colour #00cc00"; exit 1; }
+          echo "  ✓  GRUB Nightmare theme OK"
+
+      - name: Verify matrix rain code is present in web UI
+        run: |
+          INDEX=nightmare_loader/ui/index.html
+          [[ -f "$INDEX" ]] || { echo "Web UI index.html missing"; exit 1; }
+          # Full-streak matrix rain markers
+          grep -q 'MATRIX RAIN' "$INDEX" \
+            || { echo "Matrix rain section comment missing from $INDEX"; exit 1; }
+          grep -q 'BLOOD_PROB' "$INDEX" \
+            || { echo "BLOOD_PROB constant missing – blood-red columns removed"; exit 1; }
+          grep -q 'shadowBlur' "$INDEX" \
+            || { echo "shadowBlur glow missing – head rendering removed"; exit 1; }
+          grep -q 'requestAnimationFrame' "$INDEX" \
+            || { echo "requestAnimationFrame loop missing – matrix rain removed"; exit 1; }
+          grep -q 'speedRoll' "$INDEX" \
+            || { echo "speedRoll variable missing – speed-tier code removed"; exit 1; }
+          echo "  ✓  Matrix rain code OK"
+
+      - name: Verify iso_root overlay structure
+        run: |
+          for f in \
+            iso_root/root/.bash_profile \
+            iso_root/root/.xinitrc \
+            iso_root/root/.config/openbox/rc.xml \
+            iso_root/root/.config/openbox/menu.xml \
+            iso_root/root/.config/tint2/tint2rc \
+            iso_root/usr/local/bin/nightmare-live-init.sh \
+            iso_root/usr/local/bin/nightmare-welcome.sh \
+            iso_root/etc/hosts \
+            iso_root/etc/fstab \
+            iso_root/etc/network/interfaces \
+            iso_root/etc/systemd/system/getty@tty1.service.d/autologin.conf \
+            iso_root/etc/systemd/system/serial-getty@ttyS0.service.d/autologin.conf \
+            iso_root/etc/systemd/network/01-live-dhcp.network \
+            iso_root/etc/systemd/system/systemd-networkd-wait-online.service.d/timeout.conf \
+            iso_root/etc/X11/xorg.conf.d/00-nightmare-live.conf; do
+            [[ -f "$f" ]] || { echo "Missing overlay file: $f"; exit 1; }
+            echo "  ✓  $f"
+          done
+
+  # ── 4. Build the live ISO with Docker (manual trigger or v* tag) ──────────
+  build-iso:
+    name: Build live ISO
+    runs-on: ubuntu-latest
+    # Only run when explicitly requested or on a release tag
+    if: |
+      (github.event_name == 'workflow_dispatch' && inputs.run_iso_build == true) ||
+      startsWith(github.ref, 'refs/tags/v')
+    needs: [test, lint-iso-scripts]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the ISO builder Docker image
+        run: docker build -t nightmare-iso-builder -f Dockerfile.iso-builder .
+
+      - name: Build the Nightmare Loader live ISO
+        run: |
+          ISO_NAME="${{ github.event.inputs.iso_output || 'nightmare-loader-live.iso' }}"
+          docker run --rm --privileged \
+            -v "$(pwd)":/out \
+            nightmare-iso-builder \
+            ./build_iso.sh --output "/out/${ISO_NAME}"
+
+      - name: Show ISO details
+        run: |
+          ISO_NAME="${{ github.event.inputs.iso_output || 'nightmare-loader-live.iso' }}"
+          ls -lh "${ISO_NAME}"
+          # Verify the ISO has the expected structure
+          if command -v isoinfo &>/dev/null; then
+            isoinfo -d -i "${ISO_NAME}" | head -20
+          fi
+
+      - name: Verify ISO structure (mount check)
+        run: |
+          ISO_NAME="${{ github.event.inputs.iso_output || 'nightmare-loader-live.iso' }}"
+          MOUNT_DIR="$(mktemp -d)"
+          sudo mount -o loop,ro "${ISO_NAME}" "${MOUNT_DIR}"
+          echo "=== ISO contents (top-level) ==="
+          ls -la "${MOUNT_DIR}"
+          echo "=== live/ ==="
+          ls -la "${MOUNT_DIR}/live/" || true
+          echo "=== boot/grub/ ==="
+          ls -la "${MOUNT_DIR}/boot/grub/" || true
+
+          # Assert required files exist inside the ISO
+          for f in live/vmlinuz live/initrd.img live/filesystem.squashfs \
+                   boot/grub/grub.cfg boot/grub/themes/nightmare/theme.txt; do
+            if [[ -f "${MOUNT_DIR}/${f}" ]]; then
+              SIZE="$(du -sh "${MOUNT_DIR}/${f}" | cut -f1)"
+              echo "  ✓  ${f}  (${SIZE})"
+            else
+              echo "  ✗  ${f}  MISSING"
+              sudo umount "${MOUNT_DIR}"
+              exit 1
+            fi
+          done
+          sudo umount "${MOUNT_DIR}"
+
+      - name: Upload ISO artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightmare-loader-live-iso
+          path: "${{ github.event.inputs.iso_output || 'nightmare-loader-live.iso' }}"
+          retention-days: 30
+
+  # ── 5. QEMU boot smoke-test (runs after ISO build, same trigger) ──────────
+  smoke-test-iso:
+    name: QEMU boot smoke-test
+    runs-on: ubuntu-latest
+    needs: build-iso
+    if: |
+      (github.event_name == 'workflow_dispatch' && inputs.run_iso_build == true) ||
+      startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download built ISO
+        uses: actions/download-artifact@v4
+        with:
+          name: nightmare-loader-live-iso
+
+      - name: Install QEMU
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends qemu-system-x86
+
+      - name: Make run_iso.sh executable
+        run: chmod +x run_iso.sh
+
+      - name: Boot smoke-test (headless, 180 s timeout)
+        run: |
+          ISO_NAME="${{ github.event.inputs.iso_output || 'nightmare-loader-live.iso' }}"
+          ./run_iso.sh \
+            --iso "${ISO_NAME}" \
+            --headless \
+            --wait-boot \
+            --serial-log /tmp/nightmare-boot.log \
+            --no-kvm \
+            --ram 768
+
+      - name: Upload boot log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: boot-serial-log
+          path: /tmp/nightmare-boot.log
+          retention-days: 7

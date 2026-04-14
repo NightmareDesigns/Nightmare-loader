@@ -145,12 +145,14 @@ class _Handler(BaseHTTPRequestHandler):
             self._json({"root": is_root})
         elif path == "/api/platform":
             import sys as _sys
-            from .drive import _is_termux
+            from .drive import _is_termux, _is_wsl
             _android = _is_termux()
+            _wsl = _is_wsl()
             self._json({
                 "platform": _sys.platform,
                 "windows":  _sys.platform == "win32",
                 "android":  _android,
+                "wsl":      _wsl,
             })
         elif path == "/api/info":
             params = parse_qs(parsed.query)
