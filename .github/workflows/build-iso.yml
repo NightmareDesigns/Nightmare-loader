@@ -1,194 +1,248 @@
 name: Build ISO
 
-on:
-  workflow_dispatch:
-  push:
-    branches:
-      - main
-      - master
-    paths:
-      - 'build_iso.sh'
-      - 'iso_root/**'
-      - 'nightmare_loader/**'
-      - '.github/workflows/build-iso.yml'
-  pull_request:
-    paths:
-      - 'build_iso.sh'
-      - 'iso_root/**'
-      - 'nightmare_loader/**'
-      - '.github/workflows/build-iso.yml'
+# Dedicated workflow for building and verifying the Nightmare Loader live ISO.
+# Complements ci.yml (which handles Python tests, wheel, and script linting).
+#
+# Trigger matrix:
+#   push to main       → lint + full ISO build + SHA256 (Docker) + artifact upload
+#   v* tag             → lint + full ISO build + SHA256 + smoke-test + artifact upload
+#   pull_request       → lint + full ISO build + SHA256 + artifact upload (no smoke-test)
+#   schedule (nightly) → lint + full ISO build + SHA256 + smoke-test + artifact upload
+#   workflow_dispatch  → lint + full ISO build + SHA256 + optional smoke-test
 
-# Security: Restrict permissions to minimum required
+on:
+  push:
+    branches: ["main"]
+    tags: ["v*"]
+  pull_request:
+    branches: ["main"]
+  schedule:
+    # Nightly build at 02:00 UTC – catches regressions early.
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+    inputs:
+      iso_output:
+        description: "Output ISO filename"
+        type: string
+        default: "nightmare-loader-live.iso"
+      run_smoke_test:
+        description: "Run QEMU boot smoke-test after build"
+        type: boolean
+        default: false
+
+# Cancel in-progress runs on the same ref when a new commit arrives.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
 jobs:
-  build-iso:
-    name: Build Nightmare Loader ISO
-    runs-on: ubuntu-22.04
-
-    # Security: Prevent concurrent builds to avoid race conditions
-    concurrency:
-      group: iso-build-${{ github.ref }}
-      cancel-in-progress: true
-
+  # ── 1. Fast validation (every push / PR) ─────────────────────────────────
+  lint-iso:
+    name: Validate ISO build scripts
+    runs-on: ubuntu-latest
     steps:
       - name: Harden Runner
         uses: step-security/harden-runner@v2
         with:
           egress-policy: audit
-          disable-sudo: false
 
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      - name: Check bash syntax – build_iso.sh
+        run: bash -n build_iso.sh
+
+      - name: Check bash syntax – run_iso.sh
+        run: bash -n run_iso.sh
+
+      - name: Check bash syntax – iso_root scripts
+        run: |
+          for f in iso_root/usr/local/bin/*.sh iso_root/root/.xinitrc iso_root/root/.bash_profile; do
+            [[ -f "$f" ]] || continue
+            echo "→ $f"
+            bash -n "$f"
+          done
+
+      - name: Verify iso_root overlay structure
+        run: |
+          for f in \
+            iso_root/root/.bash_profile \
+            iso_root/root/.xinitrc \
+            iso_root/root/.config/openbox/rc.xml \
+            iso_root/root/.config/openbox/menu.xml \
+            iso_root/root/.config/tint2/tint2rc \
+            iso_root/usr/local/bin/nightmare-live-init.sh \
+            iso_root/usr/local/bin/nightmare-welcome.sh \
+            iso_root/etc/hosts \
+            iso_root/etc/fstab \
+            iso_root/etc/network/interfaces \
+            iso_root/etc/systemd/system/getty@tty1.service.d/autologin.conf \
+            iso_root/etc/systemd/system/serial-getty@ttyS0.service.d/autologin.conf \
+            iso_root/etc/systemd/network/01-live-dhcp.network \
+            iso_root/etc/systemd/system/systemd-networkd-wait-online.service.d/timeout.conf \
+            iso_root/etc/X11/xorg.conf.d/00-nightmare-live.conf; do
+            [[ -f "$f" ]] || { echo "Missing overlay file: $f"; exit 1; }
+            echo "  ✓  $f"
+          done
+
+      - name: Verify GRUB Nightmare theme is present and complete
+        run: |
+          THEME=nightmare_loader/theme/theme.txt
+          [[ -f "$THEME" ]] || { echo "GRUB theme missing: $THEME"; exit 1; }
+          grep -q 'NIGHTMARE LOADER' "$THEME" \
+            || { echo "GRUB theme missing 'NIGHTMARE LOADER' title"; exit 1; }
+          grep -q '#cc0000' "$THEME" \
+            || { echo "GRUB theme missing blood-red accent colour #cc0000"; exit 1; }
+          grep -q '#00cc00' "$THEME" \
+            || { echo "GRUB theme missing matrix-green colour #00cc00"; exit 1; }
+          echo "  ✓  GRUB Nightmare theme OK"
+
+  # ── 2. Full ISO build (main, tags, nightly, manual) ───────────────────────
+  build-iso:
+    name: Build live ISO
+    runs-on: ubuntu-latest
+    needs: lint-iso
+    outputs:
+      iso_name: ${{ steps.set-name.outputs.iso_name }}
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@v2
         with:
-          # Security: Use full clone depth for reproducibility
-          fetch-depth: 0
-          # Security: Persist credentials disabled
-          persist-credentials: false
+          egress-policy: audit
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          # Security: Verify Python installation
-          check-latest: true
+      - uses: actions/checkout@v4
 
-      - name: Verify build script integrity
+      - name: Resolve ISO output name
+        id: set-name
         run: |
-          # Verify the build script hasn't been tampered with
-          if [ ! -f "build_iso.sh" ]; then
-            echo "Error: build_iso.sh not found"
-            exit 1
+          ISO_NAME="${{ github.event.inputs.iso_output || 'nightmare-loader-live.iso' }}"
+          echo "iso_name=${ISO_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Build the ISO builder Docker image
+        run: docker build -t nightmare-iso-builder -f Dockerfile.iso-builder .
+
+      - name: Build the Nightmare Loader live ISO
+        run: |
+          ISO_NAME="${{ steps.set-name.outputs.iso_name }}"
+          docker run --rm --privileged \
+            -v "$(pwd)":/out \
+            nightmare-iso-builder \
+            ./build_iso.sh --output "/out/${ISO_NAME}"
+
+      - name: Show ISO details
+        run: |
+          ISO_NAME="${{ steps.set-name.outputs.iso_name }}"
+          ls -lh "${ISO_NAME}"
+          if command -v isoinfo &>/dev/null; then
+            isoinfo -d -i "${ISO_NAME}" | head -20
           fi
 
-          # Check for suspicious commands in build script
-          if grep -E '(curl.*\||wget.*\||rm\s+-rf\s+/(?!tmp|var/tmp))' build_iso.sh; then
-            echo "Warning: Potentially dangerous commands detected in build_iso.sh"
-          fi
-
-          # Verify script has proper shebang
-          head -1 build_iso.sh | grep -q '^#!/' || {
-            echo "Error: Invalid or missing shebang in build_iso.sh"
-            exit 1
-          }
-
-      - name: Install system dependencies
+      - name: Verify ISO structure (mount check)
         run: |
-          sudo apt-get update -qq
-          # Install only necessary packages with version pinning where critical
-          sudo apt-get install -y --no-install-recommends \
-            debootstrap \
-            squashfs-tools \
-            grub-pc-bin \
-            grub-efi-amd64-bin \
-            grub-common \
-            xorriso \
-            mtools
+          ISO_NAME="${{ steps.set-name.outputs.iso_name }}"
+          MOUNT_DIR="$(mktemp -d)"
+          sudo mount -o loop,ro "${ISO_NAME}" "${MOUNT_DIR}"
+          echo "=== ISO top-level contents ==="
+          ls -la "${MOUNT_DIR}"
+          echo "=== live/ ==="
+          ls -la "${MOUNT_DIR}/live/" || true
+          echo "=== boot/grub/ ==="
+          ls -la "${MOUNT_DIR}/boot/grub/" || true
 
-          # Verify critical binaries
-          command -v debootstrap || exit 1
-          command -v mksquashfs || exit 1
-          command -v grub-mkrescue || exit 1
+          for f in live/vmlinuz live/initrd.img live/filesystem.squashfs \
+                   boot/grub/grub.cfg boot/grub/themes/nightmare/theme.txt; do
+            if [[ -f "${MOUNT_DIR}/${f}" ]]; then
+              SIZE="$(du -sh "${MOUNT_DIR}/${f}" | cut -f1)"
+              echo "  ✓  ${f}  (${SIZE})"
+            else
+              echo "  ✗  ${f}  MISSING"
+              sudo umount "${MOUNT_DIR}"
+              exit 1
+            fi
+          done
+          sudo umount "${MOUNT_DIR}"
 
-      - name: Install Python dependencies
+      - name: Generate checksums
         run: |
-          python -m pip install --upgrade pip setuptools wheel
-          pip install -e .
+          ISO_NAME="${{ steps.set-name.outputs.iso_name }}"
+          sha256sum "${ISO_NAME}" > "${ISO_NAME}.sha256"
+          md5sum "${ISO_NAME}" > "${ISO_NAME}.md5"
+          echo "=== SHA256 checksum ==="
+          cat "${ISO_NAME}.sha256"
+          echo "=== MD5 checksum ==="
+          cat "${ISO_NAME}.md5"
 
-      - name: Verify Nightmare Loader installation
+      - name: Generate SBOM (pip-audit)
         run: |
-          nightmare-loader --version
-          python -c "import nightmare_loader; print(f'Version: {nightmare_loader.__version__}')"
-
-      - name: Build ISO
-        run: |
-          # Build with restricted environment
-          sudo -E \
-            HOME="$HOME" \
-            PATH="$PATH" \
-            ./build_iso.sh \
-              --output "${{ github.workspace }}/nightmare-loader-live.iso"
-        env:
-          # Security: Explicitly clear sensitive environment variables
-          GITHUB_TOKEN: ''
-
-      - name: Verify ISO integrity
-        run: |
-          ISO_FILE="${{ github.workspace }}/nightmare-loader-live.iso"
-
-          # Check ISO exists and is not empty
-          if [ ! -f "$ISO_FILE" ]; then
-            echo "Error: ISO file not created"
-            exit 1
-          fi
-
-          if [ ! -s "$ISO_FILE" ]; then
-            echo "Error: ISO file is empty"
-            exit 1
-          fi
-
-          # Verify ISO is valid
-          file "$ISO_FILE" | grep -i "ISO 9660" || {
-            echo "Error: File is not a valid ISO"
-            exit 1
-          }
-
-          # Check reasonable size (should be > 100MB and < 2GB)
-          SIZE=$(stat -c%s "$ISO_FILE")
-          if [ "$SIZE" -lt 104857600 ]; then
-            echo "Warning: ISO seems too small ($SIZE bytes)"
-          fi
-          if [ "$SIZE" -gt 2147483648 ]; then
-            echo "Warning: ISO seems too large ($SIZE bytes)"
-          fi
-
-          # Calculate checksums
-          echo "ISO Size: $(du -h "$ISO_FILE" | cut -f1)"
-          echo "SHA256: $(sha256sum "$ISO_FILE" | cut -d' ' -f1)"
-          echo "MD5: $(md5sum "$ISO_FILE" | cut -d' ' -f1)"
-
-      - name: Generate SBOM (Software Bill of Materials)
-        run: |
+          python -m pip install --upgrade pip
           pip install pip-audit
           pip-audit --format json --output sbom-iso.json || true
 
-      - name: Upload ISO artifact
+      - name: Upload ISO + checksum artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: nightmare-loader-iso-${{ github.sha }}
-          path: nightmare-loader-live.iso
+          name: nightmare-loader-live-iso
+          path: |
+            ${{ steps.set-name.outputs.iso_name }}
+            ${{ steps.set-name.outputs.iso_name }}.sha256
+            ${{ steps.set-name.outputs.iso_name }}.md5
           retention-days: 30
-          # Security: Compress artifact
-          compression-level: 9
-          if-no-files-found: error
 
-      - name: Upload SBOM
+      - name: Upload SBOM artifact
         uses: actions/upload-artifact@v4
         with:
-          name: sbom-iso-${{ github.sha }}
+          name: sbom-iso
           path: sbom-iso.json
-          retention-days: 90
+          retention-days: 30
           if-no-files-found: warn
 
-      - name: Upload checksums
-        run: |
-          sha256sum nightmare-loader-live.iso > nightmare-loader-live.iso.sha256
-          md5sum nightmare-loader-live.iso > nightmare-loader-live.iso.md5
+  # ── 3. QEMU boot smoke-test (tags, nightly, or manual request) ────────────
+  smoke-test:
+    name: QEMU boot smoke-test
+    runs-on: ubuntu-latest
+    needs: build-iso
+    if: |
+      startsWith(github.ref, 'refs/tags/v') ||
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && inputs.run_smoke_test == true)
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
 
-      - name: Upload checksum artifacts
+      - uses: actions/checkout@v4
+
+      - name: Download built ISO
+        uses: actions/download-artifact@v4
+        with:
+          name: nightmare-loader-live-iso
+
+      - name: Install QEMU
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends qemu-system-x86
+
+      - name: Make run_iso.sh executable
+        run: chmod +x run_iso.sh
+
+      - name: Boot smoke-test (headless, 180 s timeout)
+        run: |
+          ISO_NAME="${{ needs.build-iso.outputs.iso_name }}"
+          ./run_iso.sh \
+            --iso "${ISO_NAME}" \
+            --headless \
+            --wait-boot \
+            --serial-log /tmp/nightmare-boot.log \
+            --no-kvm \
+            --ram 768
+
+      - name: Upload boot log
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: nightmare-loader-iso-checksums-${{ github.sha }}
-          path: |
-            nightmare-loader-live.iso.sha256
-            nightmare-loader-live.iso.md5
-          retention-days: 90
-
-      - name: Cleanup
-        if: always()
-        run: |
-          # Remove temporary build artifacts
-          sudo rm -rf /tmp/nightmare-iso-* || true
-          # Clear any cached credentials
-          rm -rf ~/.cache/pip || true
+          name: boot-serial-log
+          path: /tmp/nightmare-boot.log
+          retention-days: 7
