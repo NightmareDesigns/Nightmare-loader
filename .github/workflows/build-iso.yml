@@ -93,11 +93,14 @@ jobs:
 
       - name: Install Python dependencies
         run: |
+          python -m venv .venv
+          . .venv/bin/activate
           python -m pip install --upgrade pip setuptools wheel
-          pip install -e .
+          python -m pip install -e .
 
       - name: Verify Nightmare Loader installation
         run: |
+          . .venv/bin/activate
           nightmare-loader --version
           python -c "import nightmare_loader; print(f'Version: {nightmare_loader.__version__}')"
 
@@ -150,6 +153,7 @@ jobs:
 
       - name: Generate SBOM (Software Bill of Materials)
         run: |
+          . .venv/bin/activate
           pip install pip-audit
           pip-audit --format json --output sbom-iso.json || true
 
