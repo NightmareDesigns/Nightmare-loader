@@ -542,8 +542,13 @@ insmod gfxterm
 # behaviour of the GRUB config installed on prepared USB drives).
 if loadfont (\$root)/boot/grub/fonts/unicode.pf2; then
     set gfxmode=auto
-    terminal_output gfxterm
-    set theme=(\$root)/boot/grub/themes/nightmare/theme.txt
+    if terminal_output gfxterm; then
+        set theme=(\$root)/boot/grub/themes/nightmare/theme.txt
+    else
+        terminal_output console
+    fi
+else
+    terminal_output console
 fi
 
 menuentry "Nightmare Loader Live" {
